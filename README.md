@@ -18,7 +18,8 @@ thumbnails for games which don't have a **libretro-thumbnail** image or if entri
 are not found in your DAT file. For the latter, if you know the CRC of your
 cart or ROM, you can add to your DAT file at any time using the text editor of
 your choice. In particular, rom hacks are likely going to be missing from
-the DAT file you pull from DAT-O-MATIC.
+the DAT file you pull from DAT-O-MATIC, but there are a few missing retail games
+or revisions of them as well. 
 
 This tool is only supported on Windows as it relies on .NET types which are
 not available on MacOS or Linux.
