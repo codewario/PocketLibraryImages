@@ -8,11 +8,6 @@ Param(
 # Variables
 $ErrorActionPreference = 'Stop'
 
-trap {
-    Write-Host 'An error occurred and script is now terminated.'
-    Pause
-}
-
 $tempWorkspace = if ( $env:USERPROFILE ) {
     "$env:USERPROFILE\.aostool"
 }
@@ -175,7 +170,7 @@ Follow these steps, then select option 1 to continue:
    "Download ZIP" and select "Copy Link". Note that right click will paste in the terminal.
 4. We will use this link in the next step. Select OK once you have copied the ZIP archive URL.
 "@
-        
+
     Write-Host
     $packUrl = Read-Host 'Please paste the libretro-thumbnail console repo ZIP link now'
 
@@ -271,21 +266,21 @@ Function Show-MovePrompt {
     Write-Host "Moving $LibraryType library to $path"
     $source = switch ( $LibraryType ) {
         'BoxArts' {
-            if( ( Test-Path -PathType Container $tempConversionBoxArtsDir ) ) {
+            if ( ( Test-Path -PathType Container $tempConversionBoxArtsDir ) ) {
                 "$tempConversionBoxArtsDir\*"
             }
             break
         }
 
         'Snaps' {
-            if( ( Test-Path -PathType Container $tempConversionSnapsDir ) ) {
+            if ( ( Test-Path -PathType Container $tempConversionSnapsDir ) ) {
                 "$tempConversionSnapsDir\*"
             }
             break
         }
 
         'Titles' {
-            if( ( Test-Path -PathType Container $tempConversionTitlesDir ) ) {
+            if ( ( Test-Path -PathType Container $tempConversionTitlesDir ) ) {
                 "$tempConversionTitlesDir\*"
             }  
             break
@@ -293,15 +288,15 @@ Function Show-MovePrompt {
 
         # All if no specified type
         { [string]::IsNullOrWhiteSpace($LibraryType) } {
-            if( ( Test-Path -PathType Container $tempConversionBoxArtsDir ) ) {
+            if ( ( Test-Path -PathType Container $tempConversionBoxArtsDir ) ) {
                 $tempConversionBoxArtsDir
             }
-            
-            if( ( Test-Path -PathType Container $tempConversionSnapsDir ) ) {
+
+            if ( ( Test-Path -PathType Container $tempConversionSnapsDir ) ) {
                 $tempConversionSnapsDir
             }
 
-            if( ( Test-Path -PathType Container $tempConversionTitlesDir ) ) {
+            if ( ( Test-Path -PathType Container $tempConversionTitlesDir ) ) {
                 $tempConversionTitlesDir
             }
 
@@ -309,9 +304,10 @@ Function Show-MovePrompt {
         }
     }
 
-    if( $source ) {
+    if ( $source ) {
         Move-Item -Force -Path $source -Destination $path > $null
-    } else {
+    }
+    else {
         Write-Warning 'Could not find converted images (did you convert the images yet?)'
     }
     Pause
@@ -353,7 +349,7 @@ Function Convert-PngToAnalogueLibraryBmp {
             if ( !( 'System.Windows.Media.Imaging.BitmapDecoder' -as [type] ) ) {
                 Add-Type -AssemblyName PresentationCore > $null
             }
-    
+
             # Read in the initial image as FileStream
             [System.IO.FileStream]$imageStream = [System.IO.FileStream]::new(
                 "$(Resolve-Path $InFile)",
@@ -361,46 +357,46 @@ Function Convert-PngToAnalogueLibraryBmp {
                 [System.IO.FileAccess]::Read,
                 [System.IO.FileShare]::Read
             )
-    
+
             # Read image FileStream into BitmapSource
             $bitmapSource = [System.Windows.Media.Imaging.PngBitmapDecoder]::new(
                 $imageStream,
                 [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
                 [System.Windows.Media.Imaging.BitmapCacheOption]::Default
             ).Frames[0]
-    
+
             # Rotate -90 degrees per Analogue spec
             $rotatedBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
                 $bitmapSource,
                 [System.Windows.Media.RotateTransform]::new(-90)
             )
-            
+
             # Determine aspect ratio for scaling
             # Only need height ratio as target canvas is landscape oriented
             $scale = 165 / $rotatedBitmap.PixelHeight
-            
+
             $scaledBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
                 $rotatedBitmap,
                 [System.Windows.Media.ScaleTransform]::new($scale, $scale)
             )
-    
+
             # Create new bitmap from rotated bitmap using BGRA32 pixel format
             $convertedBitmap = [System.Windows.Media.Imaging.FormatConvertedBitmap]::new()
             $convertedBitmap.BeginInit()
             $convertedBitmap.Source = $scaledBitmap
             $convertedBitmap.DestinationFormat = [System.Windows.Media.PixelFormats]::Bgra32
             $convertedBitmap.EndInit()
-    
+
             # Open output stream. We will write the transformed image data along with the
             # Analogue header here.
-    
+
             # Can't use Resolve-Path for non-existant files
             $fullOutfileName = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutFile)
             [System.IO.Stream]$imageStream2 = [System.IO.File]::OpenWrite($fullOutfileName)
             $bytesWritten = 0
             $imageStream2.Write($ImageHeader, 0, $ImageHeader.Length)
             $bytesWritten += $ImageHeader.Length
-    
+
             # Dimensions as bytes, reverse order for little endian
             $h_bytes = [BitConverter]::GetBytes(( [int16]( $convertedBitmap.PixelHeight ) ))
             $w_bytes = [BitConverter]::GetBytes(( [int16]( $convertedBitmap.PixelWidth ) ))
@@ -408,18 +404,18 @@ Function Convert-PngToAnalogueLibraryBmp {
                 [array]::Reverse($h_bytes)
                 [array]::Reverse($w_bytes)
             }
-    
+
             # Write image dimensions in bytes
             $imageStream2.Write($h_bytes, 0, $h_bytes.Length)
             $bytesWritten += $h_bytes.Length
             $imageStream2.Write($w_bytes, 0, $w_bytes.Length)
             $bytesWritten += $w_bytes.Length
-    
+
             # Create pixel buffer and calculate stride
             $pixels = [byte[]]::new(( $convertedBitmap.PixelWidth * $convertedBitmap.PixelHeight * 4 ))
             $stride = $convertedBitmap.PixelWidth * 4
             $convertedBitmap.CopyPixels($pixels, $stride, 0)
-    
+
             # Write the image to the output file
             $imageStream2.Write($pixels, 0, $pixels.Length)
             $bytesWritten += $pixels.Length
@@ -430,22 +426,22 @@ Function Convert-PngToAnalogueLibraryBmp {
             $_.Exception.Message
         }
         finally {
-    
+
             if ( $imageStream ) {
                 $imageStream.Dispose()
                 $imageStream = $null
             }
-    
+
             if ( $imageStream2 ) {
                 $imageStream2.Dispose()
                 $imageStream2 = $null
             }
-    
+
             $bitmapSource = $null
             $convertedBitmap = $null
-    
+
             [System.GC]::Collect()
-    
+
             $ErrorActionPreference = $oldErrorActionPreference
         }
     }
@@ -504,7 +500,7 @@ Function Convert-Images {
     # Convert each file to the .bin format
     $results = $filesToConvert | ForEach-Object {
         $inFile = $_.FullName
-        
+
         # Determine outfile name (skip if game not found)
         $found = $false
         foreach ( $game in $Dat ) {
@@ -625,91 +621,96 @@ Library image pack from the libretro-thumbnails repositories.
 
 Press Ctrl+C at any time to quit this script.
 '@
-    switch ( $selection ) {
+    try {
+        switch ( $selection ) {
 
-        1 {
-            Clear-Host
-            Show-Instructions
-            break
-        }
+            1 {
+                Clear-Host
+                Show-Instructions
+                break
+            }
 
-        # Generate new image pack
-        2 {
-            Clear-Host
-            Show-GetConsoleImages
-            break
-        }
+            # Generate new image pack
+            2 {
+                Clear-Host
+                Show-GetConsoleImages
+                break
+            }
 
-        # Display steps to obtaining the DAT file
-        # Unsure if dat-o-matic has an API of any sort
-        3 {
-            Clear-Host
-            Show-DatFileHowTo
-            break
-        }
+            # Display steps to obtaining the DAT file
+            # Unsure if dat-o-matic has an API of any sort
+            3 {
+                Clear-Host
+                Show-DatFileHowTo
+                break
+            }
 
-        # Create BoxArt Library
-        4 {
-            Clear-Host
-            Show-ConvertPrompt -LibraryType BoxArts
-            break
-        }
+            # Create BoxArt Library
+            4 {
+                Clear-Host
+                Show-ConvertPrompt -LibraryType BoxArts
+                break
+            }
 
-        # Create Titles Library
-        5 {
-            Clear-Host
-            Show-ConvertPrompt -LibraryType Titles
-            break
-        }
+            # Create Titles Library
+            5 {
+                Clear-Host
+                Show-ConvertPrompt -LibraryType Titles
+                break
+            }
 
-        # Create Snaps Library
-        6 {
-            Clear-Host
-            Show-ConvertPrompt -LibraryType Snaps
-            break
-        }
-        
-        # Move BoxArt Library 
-        7 {
-            Clear-Host
-            Show-MovePrompt -LibraryType BoxArts
-            break
-        }
+            # Create Snaps Library
+            6 {
+                Clear-Host
+                Show-ConvertPrompt -LibraryType Snaps
+                break
+            }
 
-        # Move Titles Library
-        8 {
-            Clear-Host
-            Show-MovePrompt -LibraryType Titles
-            break
-        }
+            # Move BoxArt Library 
+            7 {
+                Clear-Host
+                Show-MovePrompt -LibraryType BoxArts
+                break
+            }
 
-        # Move Snaps Library
-        9 {
-            Clear-Host
-            Show-MovePrompt -LibraryType Snaps
-            break
-        }
+            # Move Titles Library
+            8 {
+                Clear-Host
+                Show-MovePrompt -LibraryType Titles
+                break
+            }
 
-        # Move All
-        10 {
-            Clear-Host
-            Show-MovePrompt
-            break
-        }
+            # Move Snaps Library
+            9 {
+                Clear-Host
+                Show-MovePrompt -LibraryType Snaps
+                break
+            }
 
-        # Clean up working directory
-        11 {
-            Write-Host 'Cleaning Up'
-            Remove-CacheDir
-            break
+            # Move All
+            10 {
+                Clear-Host
+                Show-MovePrompt
+                break
+            }
+
+            # Clean up working directory
+            11 {
+                Write-Host 'Cleaning Up'
+                Remove-CacheDir
+                break
+            }
+
+            # How to install instructions
+            12 {
+                Clear-Host
+                Show-HowToInstallMenu
+                break
+            }
         }
-        
-        # How to install instructions
-        12 {
-            Clear-Host
-            Show-HowToInstallMenu
-            break
-        }
+    } catch {
+        Write-Error -EA Continue "An error occurred and the current operation has been aborted: $($_.Exception.Message)"
+        Pause
     }
 } while ( $selection -ne -1 )
 

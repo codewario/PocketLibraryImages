@@ -4,9 +4,9 @@ This is an interactive tool to assist with downloading image libraries from
 [libretro-thumbnail](https://github.com/libretro-thumbnails/libretro-thumbnails)
 and converting them to Analogue OS' ``.bin`` format.
 
-To get started, run the script in PowerShell. An interactive menu will guide you.
-It is recommended to read the introduction before using the tool for the first
-time to get a feel for how it works.
+To get started, run `AnalogueOSLibraryImageGenerator.ps1` in PowerShell. An
+interactive menu will guide you. It is recommended to read the **Introduction**
+before using the tool for the first time to get a feel for how it works.
 
 At this time of writing only GBA, GB, GBC, and GG images are useful for
 conversion, but any libretro-thumbnail repository should be compatible.
