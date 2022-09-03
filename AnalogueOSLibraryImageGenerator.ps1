@@ -165,8 +165,9 @@ Follow these steps, then select option 1 to continue:
 
 1. Go to $libretro_repo in a web browser.
    **The URL has been copied to your clipboard for your convenience**
-2. Find the folder for the system you want to generate an image pack for and click its link.
-3. Get the URL to this repo's ZIP archive by clicking the "Code" button, then right click
+2. Find the folder for the system you want to generate an image pack for. Click its link
+   to be taken to the repository for that console's images.
+3. Obtain the URL to this repo's ZIP archive by clicking the "Code" button, then right click
    "Download ZIP" and select "Copy Link". Note that right click will paste in the terminal.
 4. We will use this link in the next step. Select OK once you have copied the ZIP archive URL.
 "@
