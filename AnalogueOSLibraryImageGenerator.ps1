@@ -709,7 +709,8 @@ Press Ctrl+C at any time to quit this script.
             }
         }
     } catch {
-        Write-Error -EA Continue "An error occurred and the current operation has been aborted: $($_.Exception.Message)"
+        Write-Warning 'An error occurred and the current operation has been aborted.'
+        Write-Error -EA -ErrorRecord Continue $_
         Pause
     }
 } while ( $selection -ne -1 )
