@@ -14,7 +14,7 @@ This ensures future compatibility as new cores are released and Library
 images become supported on openFPGA cores.
 
 Note that since this tool relies on both **libretro** and DAT files, it may miss
-thumbnails for games which don't have a *libretro-thumbnail** image or if entries
+thumbnails for games which don't have a **libretro-thumbnail** image or if entries
 are not found in your DAT file. For the latter, if you know the CRC of your
 cart or ROM, you can add to your DAT file at any time using the text editor of
 your choice. In particular, rom hacks are likely going to be missing from
