@@ -66,11 +66,11 @@ Function Copy-ToClipboard {
     }
 }
 
+
 Function Show-Menu {
     Param(
         [string]$Title = 'Menu',
         [string]$InputPrompt = 'Enter the corresponding number to make a menu selection',
-        [Parameter(Mandatory)]
         [string[]]$Options = @(),
         [string]$Message,
         [string]$CancelSelectionLabel = 'Cancel',
@@ -78,11 +78,19 @@ Function Show-Menu {
         [switch]$NoAutoCancel
     )
 
-    $useOptions = if ( !$NoAutoCancel ) {
+    [string[]]$useOptions = if ( !$NoAutoCancel ) {
         $Options + $CancelSelectionLabel
     }
     else {
         $Options
+    }
+
+    # Keep track of empty lines
+    [int[]]$subtractAtIndices = for( $o = 0; $o -lt $useOptions.Count; $o++ ) {
+        $option = $useOptions[$o]
+        if( [string]::IsNullOrWhiteSpace($option) ) {
+            $o
+        }
     }
 
     Clear-Host
@@ -93,8 +101,16 @@ Function Show-Menu {
         Write-Host "$Message$([Environment]::NewLine)" -ForegroundColor Cyan
     }
 
+    # Don't increase the input counter for empty lines
+    $offset = 1
     for ( $i = 0; $i -lt $useOptions.Count; $i++ ) {
-        Write-Host "`t$($i+1): $(@($useOptions)[$i])" -ForegroundColor Green
+        $option = $useOptions[$i]
+        if( $i -in $subtractAtIndices ) {
+            $offset -= 1
+            Write-Host
+        } else {
+            Write-Host "`t$($i+$offset): $($useOptions[$i])" -ForegroundColor Green
+        }
     }
 
     Write-Host
@@ -105,9 +121,9 @@ Function Show-Menu {
         catch {
             Write-Warning 'Numeric entries only'
         }
-    } while ( ( $selection -lt 1 ) -or ( $selection -gt $useOptions.Count ) )
+    } while ( ( $selection -lt 1 ) -or ( $selection -gt ( $useOptions.Count - $subtractAtIndices.Count ) ) )
 
-    if ( !$NoAutoCancel -and $selection -eq $useOptions.Count ) {
+    if ( !$NoAutoCancel -and $selection -eq ( $useOptions.Count - $subtractAtIndices.Count ) ) {
         $CancelOptionValue
     }
     else {
@@ -164,11 +180,17 @@ Function Show-GetConsoleImages {
 Follow these steps, then select option 1 to continue:
 
 1. Go to $libretro_repo in a web browser.
+
    **The URL has been copied to your clipboard for your convenience**
+
 2. Find the folder for the system you want to generate an image pack for. Click its link
    to be taken to the repository for that console's images.
+
 3. Obtain the URL to this repo's ZIP archive by clicking the "Code" button, then right click
-   "Download ZIP" and select "Copy Link". Note that right click will paste in the terminal.
+   "Download ZIP" and select "Copy Link" or "Copy Link Address".
+
+   **Note that right clicking will paste in the terminal**
+
 4. We will use this link in the next step. Select OK once you have copied the ZIP archive URL.
 "@
 
@@ -206,12 +228,18 @@ Follow these instructions to obtain a suitable no-intro DAT file for use with
 identifying each image:
 
 1. Go to https://datomatic.no-intro.org in a web browser.
+
    **The URL has been copied to your clipboard for your convenience**
+
 2. Click the "Download" button in the site header, then click "Standard DAT".
+
 3. Pick the target system from the "System" dropdown.
    You should not need to change the defaults.
+
 4. Click the "Prepare" button, then click the resulting "Download" button.
+
 5. Extract the .dat file from the downloaded ZIP archive.
+
 6. Make a note of the path to the downloaded ZIP file.
    You will need to provide the path to the DAT file for any of the "Create"
    selections from the main menu.
@@ -316,8 +344,8 @@ Function Show-MovePrompt {
 
 Function Show-HowToInstallMenu {
     Show-OKMenu -Title 'How to copy to Analogue OS' -Message @'
-You can either use one of the "Move" steps to first copy your image library to
-a location on your PC, or if your Analogue OS SD card is mounted, you can move
+You can use one of the "Move" steps to either copy your image library to a
+location on your PC, or if your Analogue OS SD card is mounted you can move
 them directly to the image path for your console on the SD card.
 
 The path is as follows from the root of the SD card:
@@ -329,6 +357,15 @@ time of writing are:
 - Gameboy Advance: GBA
 - Gameboy/Gameboy Color: GB
 - Game Gear: GG
+
+If you use the "Move All Libraries" step it will create subfolders for any
+library type you previously converted to `.bin` format. This is not
+compatible with the Analogue OS Library image layout, so you should not
+"Move All Libraries" directly to the SD card.
+
+Instead, "Move All Libraries" to a location on your PC, then using File
+Explorer copy the subfolder contents for the Library image type you want
+to the SD card using the layout above.
 '@
 }
 
@@ -599,15 +636,19 @@ Function Expand-ImageArchive {
 
 $MainMenuOptions =
 'Instructions', # 1
+'',
 'Download Console Image Library', # 2
 'Download No-Intro DAT file', # 3
+'',
 'Create BoxArt Library', # 4
 'Create Title Library', # 5
 'Create Snaps Library', # 6
+'',
 'Move BoxArt Library', # 7
 'Move Title Library', # 8
 'Move Snaps Library', # 9
 'Move All Libraries', # 10
+'',
 'Clean up working directory', # 11
 'How to copy to Analogue OS' # 12
 
