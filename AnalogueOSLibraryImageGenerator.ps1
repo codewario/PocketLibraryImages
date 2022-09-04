@@ -22,7 +22,8 @@ $tempConversionBoxArtsDir = "$tempConversionRootDir\conv\BoxArts"
 $tempConversionSnapsDir = "$tempConversionRootDir\conv\Snaps"
 $tempConversionTitlesDir = "$tempConversionRootDir\conv\Titles"
 
-$libretro_repo = 'https://github.com/libretro-thumbnails/libretro-thumbnails'
+$libretro_base = 'https://github.com/libretro-thumbnails'
+$libretro_repo = "$libretro_base/libretro-thumbnails"
 $datomatic_site = 'https://datomatic.no-intro.org'
 
 #Functions
@@ -86,9 +87,9 @@ Function Show-Menu {
     }
 
     # Keep track of empty lines
-    [int[]]$subtractAtIndices = for( $o = 0; $o -lt $useOptions.Count; $o++ ) {
+    [int[]]$subtractAtIndices = for ( $o = 0; $o -lt $useOptions.Count; $o++ ) {
         $option = $useOptions[$o]
-        if( [string]::IsNullOrWhiteSpace($option) ) {
+        if ( [string]::IsNullOrWhiteSpace($option) ) {
             $o
         }
     }
@@ -105,10 +106,11 @@ Function Show-Menu {
     $offset = 1
     for ( $i = 0; $i -lt $useOptions.Count; $i++ ) {
         $option = $useOptions[$i]
-        if( $i -in $subtractAtIndices ) {
+        if ( $i -in $subtractAtIndices ) {
             $offset -= 1
             Write-Host
-        } else {
+        }
+        else {
             Write-Host "`t$($i+$offset): $($useOptions[$i])" -ForegroundColor Green
         }
     }
@@ -153,6 +155,13 @@ and converting them to Analogue OS' ``.bin`` format. Each step is meant to be
 worked in order, but you can skip downloading the console library and DAT
 file if you already have them from a previous run.
 
+The "Download Console Image Library" step now enumerates the available image
+libraries so you don't have to go to Github and get the archive link yourself.
+However, if the site parsing breaks at any time, the old method of obtaining
+the ZIP link yourself is still supported with the legacy step
+"Download Console Image Library (Manual)". Use this if you have problems with
+the new download step.
+
 This tool can only download and convert images for one console at a time.
 Downloading a new console's images or cleaning the working directory will erase
 all working images along with the working diretory itself. Use the "Move"
@@ -174,9 +183,13 @@ not available on MacOS or Linux.
 }
 
 Function Show-GetConsoleImages {
-    Copy-ToClipboard $libretro_repo
+    Param(
+        [switch]$Manual
+    )
+    if ( $Manual ) {
+        Copy-ToClipboard $libretro_repo
 
-    Show-OKMenu -Title 'Download Console Image Library' -Message @"
+        Show-OKMenu -Title 'Download Console Image Library' -Message @"
 Follow these steps, then select option 1 to continue:
 
 1. Go to $libretro_repo in a web browser.
@@ -194,9 +207,23 @@ Follow these steps, then select option 1 to continue:
 4. We will use this link in the next step. Select OK once you have copied the ZIP archive URL.
 "@
 
-    Write-Host
-    $packUrl = Read-Host 'Please paste the libretro-thumbnail console repo ZIP link now'
-
+        Write-Host
+        $packUrl = Read-Host 'Please paste the libretro-thumbnail console repo ZIP link now'
+    }
+    else {
+        Write-Host @'
+A picker will open up with consoles to select from. Please select a console you wish to
+generate an Analogue OS image library for. You can use the search filter to narrow down the
+selection list.
+'@
+        do {
+            $packUrl = ( Get-LibretroThumbnailConsoleImageLinks | Out-GridView -Title 'Select a console' -OutputMode Single ).ZipLink
+            if( !$packUrl ) {
+                Write-Warning 'No console was selected. Please select a console using the picker.'
+                Pause
+            }
+        } while ( !$packUrl )
+    }
     Write-Host 'Initializing working directory'
     Initialize-CacheDir
 
@@ -367,6 +394,35 @@ Instead, "Move All Libraries" to a location on your PC, then using File
 Explorer copy the subfolder contents for the Library image type you want
 to the SD card using the layout above.
 '@
+}
+
+Function Get-LibretroThumbnailConsoleImageLinks {
+    $oldProgressPreference = $ProgressPreference
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        [array]$consoleLinks = ( Invoke-WebRequest -UseBasicParsing $libretro_repo ).Links | Where-Object {
+            # Submodule links don't have a class
+            !$_.class -and
+            $_.href -match 'libretro-thumbnails/.+/tree'
+        }
+    }
+    finally {
+        $ProgressPreference = $oldProgressPreference
+    }
+
+    foreach ( $link in $consoleLinks ) {
+        $Name = [regex]::Match($link.outerHTML, '(?<=\<a\s+.*\>).+(?=\<\/a\>)').Value -replace '\s+@.*$'
+        $linkPath = $link.href
+        $targetZipName = "$([regex]::Match($linkPath, '(?<=tree/)\S+$')).zip"
+        $targetRepoName = "$([regex]::Match($linkPath, '(?<=libretro-thumbnails\/)\S+?(?=\/)'))"
+        # Write-Warning "ZipName: $targetZipName"
+        # Write-Warning "RepoName: $targetRepoName"
+        [PSCustomObject]@{
+            # Remove submodule commit ref from the text
+            Name    = $Name
+            ZipLink = "$libretro_base/$targetRepoName/archive/$targetZipName"
+        }
+    }
 }
 
 Function Convert-PngToAnalogueLibraryBmp {
@@ -638,19 +694,20 @@ $MainMenuOptions =
 'Instructions', # 1
 '',
 'Download Console Image Library', # 2
-'Download No-Intro DAT file', # 3
+'Download Console Image Library (Manual)', # 3
+'Download No-Intro DAT file', # 4
 '',
-'Create BoxArt Library', # 4
-'Create Title Library', # 5
-'Create Snaps Library', # 6
+'Create BoxArt Library', # 5
+'Create Title Library', # 6
+'Create Snaps Library', # 7
 '',
-'Move BoxArt Library', # 7
-'Move Title Library', # 8
-'Move Snaps Library', # 9
-'Move All Libraries', # 10
+'Move BoxArt Library', # 8
+'Move Title Library', # 9
+'Move Snaps Library', # 10
+'Move All Libraries', # 11
 '',
-'Clean up working directory', # 11
-'How to copy to Analogue OS' # 12
+'Clean up working directory', # 12
+'How to copy to Analogue OS' # 13
 
 do {
     $selection = Show-Menu -Title 'Analogue OS Library Image Pack Generator' -Options $MainMenuOptions -CancelSelectionLabel Quit -Message @'
@@ -666,91 +723,99 @@ Press Ctrl+C at any time to quit this script.
     try {
         switch ( $selection ) {
 
+            # INstructions
             1 {
                 Clear-Host
                 Show-Instructions
                 break
             }
 
-            # Generate new image pack
+            # Download Console Image Library
             2 {
                 Clear-Host
                 Show-GetConsoleImages
                 break
             }
 
-            # Display steps to obtaining the DAT file
-            # Unsure if dat-o-matic has an API of any sort
+            # Download Console Image Library (Manual)
             3 {
+                Clear-Host
+                Show-GetConsoleImages -Manual
+                break
+            }
+
+            # Download No-Intro DAT File
+            4 {
                 Clear-Host
                 Show-DatFileHowTo
                 break
             }
 
             # Create BoxArt Library
-            4 {
+            5 {
                 Clear-Host
                 Show-ConvertPrompt -LibraryType BoxArts
                 break
             }
 
             # Create Titles Library
-            5 {
+            6 {
                 Clear-Host
                 Show-ConvertPrompt -LibraryType Titles
                 break
             }
 
             # Create Snaps Library
-            6 {
+            7 {
                 Clear-Host
                 Show-ConvertPrompt -LibraryType Snaps
                 break
             }
 
             # Move BoxArt Library 
-            7 {
+            8 {
                 Clear-Host
                 Show-MovePrompt -LibraryType BoxArts
                 break
             }
 
             # Move Titles Library
-            8 {
+            9 {
                 Clear-Host
                 Show-MovePrompt -LibraryType Titles
                 break
             }
 
             # Move Snaps Library
-            9 {
+            10 {
                 Clear-Host
                 Show-MovePrompt -LibraryType Snaps
                 break
             }
 
-            # Move All
-            10 {
+            # Move All Libraries
+            11 {
                 Clear-Host
                 Show-MovePrompt
                 break
             }
 
             # Clean up working directory
-            11 {
+            12 {
                 Write-Host 'Cleaning Up'
                 Remove-CacheDir
                 break
             }
 
-            # How to install instructions
-            12 {
+            # How to copy to Analogue OS
+            13 {
                 Clear-Host
                 Show-HowToInstallMenu
                 break
             }
         }
-    } catch {
+    }
+    catch {
         Write-Warning 'An error occurred and the current operation has been aborted.'
         Write-Error -EA -ErrorRecord Continue $_
         Pause
