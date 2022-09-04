@@ -4,6 +4,10 @@ This is an interactive tool to assist with downloading image libraries from
 [libretro-thumbnail](https://github.com/libretro-thumbnails/libretro-thumbnails)
 and converting them to Analogue OS' ``.bin`` format.
 
+Note that at this time image libraries only seem to work with cartridge-based
+games, but openFPGA core support for image libraries seems to be on Analogue's
+roadmap.
+
 ## Quick Start
 To get started, run `AnalogueOSLibraryImageGenerator.ps1` in PowerShell. An
 interactive menu will guide you. It is recommended to read the **Introduction**
@@ -31,7 +35,7 @@ and are not included in the normal DAT with most actual games.
 ## Where can I run this script?
 This tool is only supported on Windows as it relies on .NET types which are
 not available on MacOS or Linux. You may see some remnants in the source of a
-cross-platform direction, but this was quashed when I found the namespaces
+cross-platform direction, but this was quashed when I found the built-in namespaces
 for image manipulation are Windows-only or deprecated in non-Windows environments.
 
 ## I would just like an image library please
