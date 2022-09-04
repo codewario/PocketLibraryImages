@@ -35,5 +35,6 @@ cross-platform direction, but this was quashed when I found the namespaces
 for image manipulation are Windows-only or deprecated in non-Windows environments.
 
 ## I would just like an image library please
-Check out the releases page. A you will find stable versions of the script along with
+Check out the [Releases](https://github.com/codewario/PocketLibraryImageConversion/releases)
+page. You will find stable versions of the script along with
 some image packs built for supported games at the time of publication.
