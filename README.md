@@ -29,7 +29,7 @@ the DAT file you pull from DAT-O-MATIC, but there are a few missing retail games
 or revisions of them as well.
 
 Keep in mind that DAT-O-MATIC does split some classes of games into their own
-System. For example, most GBA video cartridges have a special system classification
+System. For example, GBA video cartridges have a special system classification
 and are not included in the normal DAT with most actual games.
 
 ## Where can I run this script?
