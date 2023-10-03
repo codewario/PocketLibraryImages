@@ -44,6 +44,16 @@ not available on MacOS or Linux. You may see some remnants in the source of a
 cross-platform direction, but this was quashed when I found the built-in namespaces
 for image manipulation are Windows-only or deprecated in non-Windows environments.
 
+I am aware that there are third-party libs/tools that can be leveraged for image
+manipulation, however, one of the goals of this project is portability and not
+requiring additional items to be installed. It is also why this script crawls
+the GitHub site to obtain the zip URLs instead of requiring `git` to be installed
+for cloning `libretro-thumbnails` and its submodules directly.
+
+That said, if anybody wants to contribute such functionality for Mac OS or Linux,
+pull requests are welcomed. Just try to keep any external dependencies to a
+"standard enough" minimum.
+
 ## I would just like an image library please
 Check out the [Releases](https://github.com/codewario/PocketLibraryImageConversion/releases)
 page. You will find stable versions of the script along with
