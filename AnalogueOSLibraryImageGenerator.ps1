@@ -817,7 +817,7 @@ Press Ctrl+C at any time to quit this script.
     }
     catch {
         Write-Warning 'An error occurred and the current operation has been aborted.'
-        Write-Error -EA -ErrorRecord Continue $_
+        Write-Error -EA Continue -ErrorRecord $_
         Pause
     }
 } while ( $selection -ne -1 )
