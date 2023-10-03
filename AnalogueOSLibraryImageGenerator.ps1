@@ -288,7 +288,8 @@ Function Show-ConvertPrompt {
         [string]$LibraryType
     )
 
-    $datPath = Read-Host 'Paste the path to your DAT file for the target console'
+    # Make sure to remove any surrounding quotes from the input string
+    $datPath = ( ( Read-Host 'Paste the path to your DAT file for the target console' ) -replace '^["'']' ) -replace '["'']$'
     $dat = Get-Dat -DatFile $datPath
     $outdir = Get-Variable -ValueOnly "tempConversion${LibraryType}Dir"
     Convert-Images -InputDirectory "$tempExtractionPath\$LibraryType" -OutputDirectory $outdir -Dat $dat
@@ -301,11 +302,12 @@ Function Show-MovePrompt {
         [string]$LibraryType
     )
 
-    $path = if ( [string]::IsNullOrWhiteSpace($Library) ) {
-        Read-Host 'Provide a directory to move your converted image library folders to'
+    # Make sure any surrounding quotes are removed
+    $path = if ( [string]::IsNullOrWhiteSpace($LibraryType) ) {
+        ( ( Read-Host 'Provide a directory to move your converted image library folders to' ) -replace '^["'']' ) -replace '["'']$'
     }
     else {
-        Read-Host "Provide a directory to move your $LibraryType image library to"
+        ( ( Read-Host "Provide a directory to move your $LibraryType image library to" ) -replace '^["'']' ) -replace '["'']$'
     }
 
     if ( !( Test-Path -PathType Container $path ) ) {
