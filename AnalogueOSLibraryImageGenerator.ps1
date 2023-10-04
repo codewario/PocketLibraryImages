@@ -218,7 +218,7 @@ selection list.
 '@
         do {
             $packUrl = ( Get-LibretroThumbnailConsoleImageLinks | Out-GridView -Title 'Select a console' -OutputMode Single ).ZipLink
-            if( !$packUrl ) {
+            if ( !$packUrl ) {
                 Write-Warning 'No console was selected. Please select a console using the picker.'
                 Pause
             }
@@ -427,6 +427,96 @@ Function Get-LibretroThumbnailConsoleImageLinks {
     }
 }
 
+function Confirm-Png {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory)]
+        [string]$FilePath
+    )
+
+    try {
+        # Signature for PNG files
+        [byte[]]$pngHeader = 137, 80, 78, 71, 13, 10, 26, 10
+        
+        # Read the first 8 bytes
+        [System.IO.FileStream]$fStream = [System.IO.FileStream]::new($FilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
+        [byte[]]$actualHeader = [byte[]]::new(8)
+        $fStream.Read($actualHeader, 0, 8) > $null
+        Write-Verbose "Actual Header: $actualHeader"
+        Write-Verbose "   PNG Header: $pngHeader"
+
+        # Check that the bytes match the expected signature for PNG files
+        # Return false on first mismatch
+        for ( $i = 0; $i -lt 8; $i++ ) {
+            if ( $actualHeader[$i] -ne $pngHeader[$i] ) {
+                return $false
+            }
+        }
+
+        # Return true by default
+        $true
+    }
+    finally {
+        if ( $fStream ) {
+            $fStream.Dispose()
+        }
+    }
+}
+
+# So far only a handful of box arts have been jpegs with a .png extension
+# that I've noticed, and none of the titles are ones I own. Unable to confirm
+# if this script is generating useful images for the Pocket to display in the
+# cases where JPEGs are masquerading as PNGs.
+function Confirm-Jpeg {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory)]
+        [string]$FilePath
+    )
+
+    # Signature for PNG files
+    [byte[]]$jpgHeader = 255, 216
+    [byte[]]$jpgFooter = 255, 217
+        
+    # For JPEG detection we really need to look at the first and last two bytes, so read the whole thing
+    [byte[]]$fileBytes = [System.IO.File]::ReadAllBytes($FilePath)
+    [byte[]]$headerBytes = $fileBytes[0, 1]
+    [byte[]]$footerBytes = $fileBytes[-2, -1]
+
+    # Free up bytes read for signature detection
+    $fileBytes = $null
+    [System.GC]::Collect()
+
+    Write-Verbose "`tActual Header: $headerBytes"
+    Write-Verbose "`t  JPEG Header: $jpgHeader"
+    Write-Verbose "`tActual Footer: $footerBytes"
+    Write-Verbose "`t  JPEG Footer: $jpgFooter"
+
+    # Check that the bytes match the expected signature for JPG files
+    for ( $i = 0; $i -lt 2; $i++ ) {
+        if ( ( $headerBytes[$i] -ne $jpgHeader[$i] ) -and ( $footerBytes[$i] -ne $jpgFooter[$i] ) ) {
+            return $false
+        }
+    }
+
+    # Return true by default
+    if( $FilePath -notmatch '\.(jpg|jpeg)$' ) {
+        Write-Warning "JPEG masquerading: ""$FilePath"""
+    }
+    $true
+}
+
+function Confirm-Image {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory)]
+        [string]$FilePath
+    )
+
+    # Check if the file is an expected image format
+    ( Confirm-Png $FilePath ) -or ( Confirm-Jpeg $FilePath )
+}
+
 Function Convert-PngToAnalogueLibraryBmp {
     Param(
         [Parameter(Mandatory)]
@@ -587,7 +677,7 @@ Function Convert-Images {
 
     # Get list of files to convert
     # libretro-thumbnails standardizes on PNG format
-    $filesToConvert = Get-ChildItem "$(Resolve-Path $InputDirectory)" -File | Where-Object {
+    $filesToConvert = Get-ChildItem -LiteralPath "$(Resolve-Path $InputDirectory)" -File | Where-Object {
         $_.Extension -match '^\.png$'
     }
 
@@ -595,7 +685,16 @@ Function Convert-Images {
 
     # Convert each file to the .bin format
     $results = $filesToConvert | ForEach-Object {
-        $inFile = $_.FullName
+        $inFile = if ( Confirm-Image $_.FullName ) {
+            $_.FullName
+        }
+        else {
+            # If the ".png" file is not actually an image, assume it's a symlink with contents pointing to the correct filename
+            $parent = Split-Path -Parent $_.FullName
+            $realName = ( Get-Content -Raw -LiteralPath $_.FullName ) -replace '\/', '\'
+            ( $realPath = "$parent\$realName" )
+            Write-Verbose "Found symlink: ""$($_.FullName)"" => ""$realPath"""
+        }
 
         # Determine outfile name (skip if game not found)
         $found = $false
@@ -611,7 +710,7 @@ Function Convert-Images {
         }
 
         if ( !$found ) {
-            Write-Warning "Could not find a definition for $($_.BaseName) in the provided DAT, skipping..."
+            Write-Verbose "Could not find a definition for $($_.BaseName) in the provided DAT, skipping..."
         }
     }
 
