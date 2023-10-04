@@ -192,6 +192,11 @@ Function Show-GetConsoleImages {
         Show-OKMenu -Title 'Download Console Image Library' -Message @"
 Follow these steps, then select option 1 to continue:
 
+0. If you already have the image archive downloaded, you may simply provide the path to the archive
+   rather than the URL to skip the download. Otherwise, follow the instructions below. Note that
+   an alternative archive location will not be cleaned up when the working directory initializes,
+   unless you have saved the archive under "$tempWorkspace".
+
 1. Go to $libretro_repo in a web browser.
 
    **The URL has been copied to your clipboard for your convenience**
@@ -227,17 +232,33 @@ selection list.
     Write-Host 'Initializing working directory'
     Initialize-CacheDir
 
-    Write-Host "Downloading $packUrl to $tempWorkspace"
+    # Download the file if it's a URL
+    if ( [uri]::IsWellFormedUriString($packUrl, 'Absolute') ) {
+        Write-Host "Downloading $packUrl to $tempWorkspace"
 
-    # Sidestep time-consuming byte-counting bug with the progress bar
-    $oldProgressPreference = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
+        # Sidestep time-consuming byte-counting bug with the progress bar
+        $oldProgressPreference = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
 
-    try {
-        Invoke-WebRequest -OutFile $tempZipPath -UseBasicParsing $packUrl
+        try {
+            Invoke-WebRequest -OutFile $tempZipPath -UseBasicParsing $packUrl
+        
+        }
+        finally {
+            $ProgressPreference = $oldProgressPreference
+        }
     }
-    finally {
-        $ProgressPreference = $oldProgressPreference
+    else {
+        # Otherwise assume it's a path to the archive on disk
+        $tempZipPath = ( ( $packUrl ) -replace '^["'']' ) -replace '["'']$'
+        if ( Test-Path -LiteralPath $tempZipPath -PathType Leaf ) {
+            Write-Host "Using provided archive location on disk: $tempZipPath"
+        }
+        else {
+            Write-Warning "A URL was not provided and the value of ""$packUrl"" does not appear to be an existing file. Aborting."
+            Pause
+            return
+        }
     }
 
     Write-Host "Unzipping $tempZipPath to $tempExtractionPath"
@@ -292,7 +313,15 @@ Function Show-ConvertPrompt {
     $datPath = ( ( Read-Host 'Paste the path to your DAT file for the target console' ) -replace '^["'']' ) -replace '["'']$'
     $dat = Get-Dat -DatFile $datPath
     $outdir = Get-Variable -ValueOnly "tempConversion${LibraryType}Dir"
-    Convert-Images -InputDirectory "$tempExtractionPath\$LibraryType" -OutputDirectory $outdir -Dat $dat
+
+    # Determine scaling mode to use
+    $scaleMode = if ( $LibraryType -eq 'BoxArts' ) {
+        'BoxArts'
+    }
+    else {
+        'Original'
+    }
+    Convert-Images -InputDirectory "$tempExtractionPath\$LibraryType" -OutputDirectory $outdir -Dat $dat -ScaleMode $scaleMode
     Pause
 }
 
@@ -500,7 +529,7 @@ function Confirm-Jpeg {
     }
 
     # Return true by default
-    if( $FilePath -notmatch '\.(jpg|jpeg)$' ) {
+    if ( $FilePath -notmatch '\.(jpg|jpeg)$' ) {
         Write-Warning "JPEG masquerading: ""$FilePath"""
     }
     $true
@@ -523,7 +552,10 @@ Function Convert-PngToAnalogueLibraryBmp {
         [string]$InFile,
         [Parameter(Mandatory)]
         [string]$OutFile,
-        [byte[]]$ImageHeader = @( 0x20, 0x49, 0x50, 0x41 )
+        [byte[]]$ImageHeader = @( 0x20, 0x49, 0x50, 0x41 ),
+        [Parameter(Mandatory)]
+        [ValidateSet('Original', 'BoxArts')]
+        [string]$ScaleMode
     )
 
     $oldErrorActionPreference = $ErrorActionPreference
@@ -559,12 +591,23 @@ Function Convert-PngToAnalogueLibraryBmp {
 
             # Determine aspect ratio for scaling
             # Only need height ratio as target canvas is landscape oriented
-            $scale = 165 / $rotatedBitmap.PixelHeight
+            $scaledBitmap = switch ( $ScaleMode ) {
+                'Original' {
+                    # Don't scale at all, just use the rotated bitmap
+                    $rotatedBitmap
+                    break
+                }
 
-            $scaledBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
-                $rotatedBitmap,
-                [System.Windows.Media.ScaleTransform]::new($scale, $scale)
-            )
+                'BoxArts' {
+                    $scale = 165 / $rotatedBitmap.PixelHeight
+
+                    [System.Windows.Media.Imaging.TransformedBitmap]::new(
+                        $rotatedBitmap,
+                        [System.Windows.Media.ScaleTransform]::new($scale, $scale)
+                    )
+                    break
+                }
+            }
 
             # Create new bitmap from rotated bitmap using BGRA32 pixel format
             $convertedBitmap = [System.Windows.Media.Imaging.FormatConvertedBitmap]::new()
@@ -625,6 +668,7 @@ Function Convert-PngToAnalogueLibraryBmp {
 
             $bitmapSource = $null
             $convertedBitmap = $null
+            $scaledBitmap = $null
 
             [System.GC]::Collect()
 
@@ -660,7 +704,10 @@ Function Convert-Images {
         [Parameter(Mandatory)]
         [string]$OutputDirectory,
         [Parameter(Mandatory)]
-        [hashtable[]]$Dat
+        [hashtable[]]$Dat,
+        [Parameter(Mandatory)]
+        [ValidateSet('Original', 'BoxArts')]
+        [string]$ScaleMode
     )
 
     # Bail on a bogus input directory
@@ -703,7 +750,7 @@ Function Convert-Images {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
-                $returnObj = Convert-PngToAnalogueLibraryBmp $inFile $outFile
+                $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
                 $returnObj.Name = $_.BaseName
                 break
             }
@@ -737,9 +784,12 @@ Function Expand-ImageArchive {
 
     try {
         $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
-        $boxartEntries = $zip.Entries | Where-Object { $_.FullName -match '^.*/Named_BoxArts/.*\.png' }
-        $titleEntries = $zip.Entries | Where-Object { $_.FullName -match '^.*/Named_Titles/.*\.png' }
-        $snapEntries = $zip.Entries | Where-Object { $_.FullName -match '^.*/Named_Snaps/.*\.png' }
+
+        # Treat top-level directory as optional, for the case where the archive is built from an
+        # archive export of the git repo
+        $boxartEntries = $zip.Entries | Where-Object { $_.FullName -match '^(.*/)?Named_BoxArts/.*\.png' }
+        $titleEntries = $zip.Entries | Where-Object { $_.FullName -match '^(.*/)?Named_Titles/.*\.png' }
+        $snapEntries = $zip.Entries | Where-Object { $_.FullName -match '^(.*/)?Named_Snaps/.*\.png' }
 
         if ( !( Test-Path -PathType Container "$DestinationPath\BoxArts" ) ) {
             New-Item -EA Stop -ItemType Directory "$DestinationPath\BoxArts" > $null

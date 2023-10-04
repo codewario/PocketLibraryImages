@@ -54,6 +54,21 @@ That said, if anybody wants to contribute such functionality for Mac OS or Linux
 pull requests are welcomed. Just try to keep any external dependencies to a
 "standard enough" minimum.
 
+## Getting a "connection closed" error when downloading one of the `libretro-thumbnails` image libraries
+There's not a whole lot I can do about this, I hit this sometimes too when trying to convert
+the GBA library due to its size. GitHub terminates the code archive download if it runs for
+longer than 20 minutes, in my experience. This is likely due to the fact that GitHub
+creates code archives on-demand, and the time the exported archive remains cached is limited.
+
+As a workaround when this happens, if you choose `Download Console Image Library (Manual)`,
+and provide a file path (instead of a URL) to an archive that you've either:
+
+- [exported yourself from a cloned copy of the `git` repo](./create-local-archive.md); or
+- been able to obtain from `libretro-thumbnails` yourself via other means
+
+then the script will work with the local archive you've pointed to instead of attempting to
+obtain it from GitHub. Note that this script expects a `.zip` file; `.tar.gz` is not supported.
+
 ## I would just like an image library please
 Check out the [Releases](https://github.com/codewario/PocketLibraryImageConversion/releases)
 page. You will find stable versions of the script along with
