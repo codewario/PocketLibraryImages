@@ -84,4 +84,5 @@ page for the most recent sample image packs.
 If you have a problem with the latest version, all [Releases](https://github.com/codewario/PocketLibraryImageConversion/releases/)
 have sample packs provided, so you may try one of those. You can find older stable versions of the
 script along with image packs for supported games at the time of release as well as prior versions
-of the script.
+of the script. Don't forget if you have a problem with the latest sample packs to
+please create an issue on the [project's issue tracker]([url](https://github.com/codewario/PocketLibraryImageConversion/issues)https://github.com/codewario/PocketLibraryImageConversion/issues).
