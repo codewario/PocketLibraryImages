@@ -1,6 +1,6 @@
 [CmdletBinding()]
 Param(
-
+    [switch]$ShowConvertedFiles
 )
 #Requires -PSEdition Desktop
 #Requires -Version 5.1
@@ -757,7 +757,9 @@ Function Convert-Images {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
-                Write-Host "Converting ""$useGameName"""
+                if( $ShowConvertedFiles ) {
+                    Write-Host "Converting ""$useGameName"""
+                }
                 $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
                 $returnObj.Name = $_.BaseName
                 break

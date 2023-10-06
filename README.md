@@ -19,6 +19,14 @@ To get started, run `AnalogueOSLibraryImageGenerator.ps1` in PowerShell. An
 interactive menu will guide you. It is recommended to read the **Introduction**
 before using the tool for the first time to get a feel for how it works.
 
+By default the output is minimal. You can use the following flags to control
+whether to show additional output when launching the script. Note that these
+flags will increase the conversion time a bit as writing to the console is not
+an instant operation:
+
+- `-ShowConvertedFiles`: Output the files which are converted to the console
+- `-Verbose`: Additional debugging output, useful when troubleshooting the script
+
 ## What game libraries can I convert?
 At this time of writing only GBA, GB, GBC, and GG images are useful for
 conversion, but any libretro-thumbnail repository should be compatible.
