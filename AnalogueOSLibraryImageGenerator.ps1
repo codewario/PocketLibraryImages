@@ -240,12 +240,14 @@ selection list.
         $oldProgressPreference = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
 
+        $startTime = Get-Date
         try {
             Invoke-WebRequest -OutFile $tempZipPath -UseBasicParsing $packUrl
         
         }
         finally {
             $ProgressPreference = $oldProgressPreference
+            Write-Host "Download finished in $(( Get-Date ) - $startTime)"
         }
     }
     else {
@@ -729,8 +731,10 @@ Function Convert-Images {
     }
 
     Write-Host 'Beginning conversion (this will take a while)'
+    $startTime = Get-Date
 
     # Convert each file to the .bin format
+    $convertedCount = 0
     $results = $filesToConvert | ForEach-Object {
         $inFile = if ( Confirm-Image $_.FullName ) {
             $_.FullName
@@ -757,11 +761,15 @@ Function Convert-Images {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
-                if( $ShowConvertedFiles ) {
+                if ( $ShowConvertedFiles ) {
                     Write-Host "Converting ""$useGameName"""
                 }
                 $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
                 $returnObj.Name = $_.BaseName
+
+                if ($returnObj.Success ) {
+                    $convertedCount++
+                }
                 break
             }
         }
@@ -776,6 +784,9 @@ Function Convert-Images {
             Write-Warning ( "Failed to convert {0}: {1}" -f $_.Name, $_.Output )
         }
     }
+
+    $timespan = ( Get-Date ) - $startTime
+    Write-Host "Converted $convertedCount images in $timespan"
 }
 
 # We need a function that will extract the files to short paths
