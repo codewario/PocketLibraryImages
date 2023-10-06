@@ -746,10 +746,18 @@ Function Convert-Images {
         # Determine outfile name (skip if game not found)
         $found = $false
         foreach ( $game in $Dat ) {
-            if ( $_.BaseName -eq $game.name ) {
+
+            # Per `libretro-thumbnails` instructions, replace the following characters
+            # in the game name with an underscore, as these characters are illegal in
+            # file paths:
+            #
+            # &*/:`<>?\|"
+            $useGameName = $game.name -replace '[&\*/:`<>\?\\\|"]', '_'
+            if ( $_.BaseName -eq $useGameName ) {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
+                Write-Host "Converting ""$useGameName"""
                 $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
                 $returnObj.Name = $_.BaseName
                 break
