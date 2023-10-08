@@ -28,6 +28,77 @@ $libretro_base = 'https://github.com/libretro-thumbnails'
 $libretro_repo = "$libretro_base/libretro-thumbnails"
 $datomatic_site = 'https://datomatic.no-intro.org'
 
+# Titles for special handling during conversion
+$specialCaseTitles = @'
+# GBC
+Castlevania - The Adventure DX (USA)::Romhack
+Castlevania II - Belmont's Revenge DX (USA)::Romhack
+Donkey Kong Land - DX (USA)::Romhack
+Donkey Kong Land 2 - DX (USA)::Romhack
+Donkey Kong Land III DX (USA)::Romhack
+Kirby's Dream Land - DX (USA)::Romhack
+Kirby's Dream Land 2 - DX (USA)::Romhack
+Legend of Zelda, The - Link's Awakening DX - Redux (USA)::Romhack
+Metroid II - Return of Samus DX (USA)::Romhack
+Pokemon - Blue Version DX (USA)::Romhack
+Pokemon - Red Version DX (USA)::Romhack
+Pokemon - Yellow Version - Special Pikachu Edition DX (USA)::Romhack
+Pokemon Picross (USA)::Romhack
+Pokemon Trading Card Game 2 - The Invasion of Team GR (USA)::Romhack
+Super Mario Bros. Deluxe (Japan) (En) (Rev 1) (NP)::Redirect::Super Mario Bros. Deluxe (Japan) (NP)
+Super Mario Land - DX (USA)::Romhack
+Super Mario Land 2 - 6 Golden Coins DX (USA)::Romhack
+Survival Kids 2 - Escape the Twin Islands! (USA)::Romhack
+Wario Land - Super Mario Land 3 DX (USA)::Romhack
+
+# GB
+Mario's Picross 2 (USA) (SGB Enhanced)::Romhack
+Pokemon - Brown Version::Romhack
+Pokemon - Green Version (USA, Europe) (SGB Enhanced)::Romhack
+Super Mario Land 4 (Unknown) (Ja) (Unl) (Pirate)::Romhack
+
+# GBA
+Action Replay GBX (Europe) (En,Fr,De,It) (Alt 1) (Unl)::Redirect::Action Replay GBX (Europe) (En,Fr,De,It) (Unl) (Alt)
+Aero the Acro-Bat - Rascal Rival Revenge (Europe)::Redirect::Aero the Acro-Bat (Europe)
+Aero the Acro-Bat - Rascal Rival Revenge (USA)::Redirect::Aero the Acro-Bat (USA)
+AGS Aging Cartridge (World) (v7.0)::Redirect::AGS Aging Cartridge (World) (Rev 1) (v7.0) (Test Program)
+AGS Aging Cartridge (World) (v7.1)::Redirect::AGS Aging Cartridge (World) (v7.1) (Test Program)
+Care Bears - The Care Quests (Europe) (En,Fr,De,Es,It,Nl,Pt,Da)::Redirect::Care Bears - The Care Quest (Europe) (En,Fr,De,Es,It,Nl
+Care Bears - The Care Quests (USA) (En,Fr,Es)::Redirect::Care Bears - The Care Quest (USA) (En,Fr,Es)
+Celeste Classic::Homebrew
+Donchan Puzzle - Hanabi de Dohn! Advance (Japan)::Redirect::Don-chan Puzzle - Hanabi de Doon! Advance (Japan)
+Fear Factor Unleashed (USA)::Redirect::Fear Factor - Unleashed (USA)
+Fire Emblem - The Binding Blade (USA)::Romhack
+GameShark GBA (USA) (Alt 1) (Unl)::Redirect::GameShark GBA (USA) (Unl) (Alt)
+GBA TV Tuner PAL (China) (v1.3) (Unl)::Redirect::GB-A TV Tuner PAL (China) (v1.3) (Unl)
+GBA TV Tuner PAL (China) (v2.0) (Unl)::Redirect::GB-A TV Tuner PAL (China) (v2.0) (Unl)
+Jump (Japan)::e-Reader
+Mandrake the Magician (Italy) (Proto)::Redirect::Mandrake the Magician (Italy) (It) (Proto)
+Memory Dumps - Promotional (USA, Australia)::e-Reader
+Mother 1+2 (USA)::Romhack
+Mother 3 (USA)::Romhack
+Motoracer Advance (Europe) (En,Fr,De,Es,It)::Redirect::Moto Racer Advance (Europe) (En,Fr,De,Es,It)
+Motoracer Advance (USA) (En,Fr,De,Es,It)::Redirect::Moto Racer Advance (USA) (En,Fr,De,Es,It)
+Overstorm (Unknown) (Proto)::Redirect::Overstorm (Europe) (Proto)
+Phantom, The (Italy) (Proto)::Redirect::Phantom, The (Italy) (It) (Proto)
+Pokemon (USA)::Unknown bootleg or romhack
+Pokemon - Doel Deoxys Distribution (Netherlands) (Kiosk)::Redirect::Pokemon - Doel Deoxys Distribution (Netherlands) (En) (Kiosk)
+Pokemon Channel - Line Art Card - 11-A101 - The Pikachu Star (USA, Australia) (Promo)::e-Reader
+Pokemon Channel - Line Art Card - 11-A102 - The Kyogre Constellation (USA) (Promo)::e-Reader
+Pokemon Channel - Line Art Card - 11-P101 - Jirachi (Australia) (Promo)::e-Reader
+Pokemon Channel - Paint Pattern Card - 11-A103 - Poke A La Card (USA, Australia) (Promo)::e-Reader
+Ratatouille (Greece) (En)::Redirect::Ratatouille (Australia, Greece) (En)
+SN Systems (Europe)::Redirect::SN Systems (Europe) (Test Program) (Unl)
+Tiny Chao Garden (USA) (Ja) (Phantasy Star Online Episode I _ II)::Gamecube rom
+Toyrobo Force (Japan)::Redirect::Toy Robo Force (Japan)
+Travis Pastrana's Pro MotoX (USA, Europe) (Proto) (2002-12-12)::Redirect::Travis Pastrana's Pro MotoX (USA) (Proto) (2002-12-12)
+Xploder Advance (Europe) (Alt 1) (Unl)::Redirect::Xploder Advance (Europe) (Unl) (Alt)
+'@ -split '\r?\n' | Where-Object {
+    
+    # Filter out empty lines and lines beginning with # 
+    $_ -notmatch '(^#|^\s*$)'
+}
+
 #Functions
 Function Remove-CacheDir {
     Param(
@@ -778,6 +849,7 @@ Function Convert-Images {
 
         # Determine outfile name (skip if game not found)
         $found = $false
+        $ignored = $false
         foreach ( $game in $Dat ) {
 
             # Per `libretro-thumbnails` instructions, replace the following characters
@@ -786,7 +858,37 @@ Function Convert-Images {
             #
             # &*/:`<>?\|"
             $useGameName = $game.name -replace '[&\*/:`<>\?\\\|"]', '_'
-            if ( $_.BaseName -eq $useGameName ) {
+
+            # Determine the base name to use, for special cases
+            $escapedTitle = [regex]::Escape($_.BaseName)
+            $useBaseName = if ( ( $match = $specialCaseTitles -match "^$escapedTitle::" ) ) {
+                $actualBase, $caseReason, $datRedirect = $match -split '::', 3
+
+                if ( $caseReason -match '^Redirect' ) {
+
+                    # Sanity check
+                    if ( !$datRedirect ) {
+                        Write-Warning "Attempted redirect of ""$actualBase"" missing DAT reference (developer needs to fix!)"
+                        $_.BaseName
+                    }
+                    else {
+                        Write-Warning "Redirecting ""$actualBase"" to DAT file record ""$datRedirect"""
+                        
+                        $datRedirect
+                    }
+                }
+                else {
+                    # If there's no other rule, ignore the title
+                    Write-Warning "Ignoring ""$actualBase"": $caseReason"
+                    $ignored = $true
+                    break
+                }
+            }
+            else {
+                $_.BaseName
+            }
+
+            if ( $useBaseName -eq $useGameName ) {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
@@ -803,7 +905,7 @@ Function Convert-Images {
             }
         }
 
-        if ( !$found ) {
+        if ( !$found -and !$ignored ) {
             Write-Verbose "Could not find a definition for ""$($_.BaseName)"" in the provided DAT, skipping..."
         }
     }
