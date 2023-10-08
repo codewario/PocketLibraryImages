@@ -26,6 +26,8 @@ an instant operation:
 
 - `-ShowConvertedFiles`: Output the files which are converted to the console
 - `-Verbose`: Additional debugging output, useful when troubleshooting the script
+- `-Verbosity`: `Minimal`, `Extra`, or `Noisy`. Controls how much information is
+displayed when `-Verbose` is set. No effect otherwise. `Minimal` is the default.
 
 ## What game libraries can I convert?
 At this time of writing only GBA, GB, GBC, and GG images are useful for

@@ -1,6 +1,8 @@
 [CmdletBinding()]
 Param(
-    [switch]$ShowConvertedFiles
+    [switch]$OutputConvertedFiles,
+    [ValidateSet('Minimal', 'Extra', 'Noisy')]
+    [string]$Verbosity = 'Minimal' # Dev note: don't bother writing checks for 'Minimal'
 )
 #Requires -PSEdition Desktop
 #Requires -Version 5.1
@@ -473,8 +475,11 @@ function Confirm-Png {
         [System.IO.FileStream]$fStream = [System.IO.FileStream]::new($FilePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
         [byte[]]$actualHeader = [byte[]]::new(8)
         $fStream.Read($actualHeader, 0, 8) > $null
-        Write-Verbose "Actual Header: $actualHeader"
-        Write-Verbose "   PNG Header: $pngHeader"
+
+        if ( $Verbosity -eq 'Noisy' ) {
+            Write-Verbose "Actual Header: $actualHeader"
+            Write-Verbose "   PNG Header: $pngHeader"
+        }
 
         # Check that the bytes match the expected signature for PNG files
         # Return false on first mismatch
@@ -518,10 +523,13 @@ function Confirm-Jpeg {
     $fileBytes = $null
     [System.GC]::Collect()
 
-    Write-Verbose "`tActual Header: $headerBytes"
-    Write-Verbose "`t  JPEG Header: $jpgHeader"
-    Write-Verbose "`tActual Footer: $footerBytes"
-    Write-Verbose "`t  JPEG Footer: $jpgFooter"
+    # Super noisy even for verbose output. Uncomment if debugging image headers
+    if ( $Verbosity -eq 'Noisy' ) {
+        Write-Verbose "`tActual Header: $headerBytes"
+        Write-Verbose "`t  JPEG Header: $jpgHeader"
+        Write-Verbose "`tActual Footer: $footerBytes"
+        Write-Verbose "`t  JPEG Footer: $jpgFooter"
+    }
 
     # Check that the bytes match the expected signature for JPG files
     for ( $i = 0; $i -lt 2; $i++ ) {
@@ -727,7 +735,25 @@ Function Convert-Images {
     # Get list of files to convert
     # libretro-thumbnails standardizes on PNG format
     $filesToConvert = Get-ChildItem -LiteralPath "$(Resolve-Path $InputDirectory)" -File | Where-Object {
-        $_.Extension -match '^\.png$'
+        ( $_.Extension -match '^\.png$' ) -and
+
+        # Ignore e-reader card entries, e-card names are usually suffixed with `-e` before the region
+        ( $_.BaseName -notmatch '^.*(-e|e\+).*\(' ) -and
+
+        # Detect and remove romhacks of all types. Useless as Game Details won't show for these.
+        # Some hacks have no indication in the file name and cannot be detected in this way.
+        # TODO: Remove this and related checks if OpenFPGA ever supports image libraries, or if Analogue
+        #       adds in something like a custom database users can provide that will trigger
+        #       the Game Details page for otherwise unrecognized CRC IDs (would be useful
+        #       for flashable cartridges, such as fan translation carts)
+        ( $_.BaseName -notmatch '(\[(Hack|T-)|\([\w\s,]*Hack)' ) -and
+        
+        # Ignore virtual console versions. These either have no physical counterpart or are identical
+        # to a retail version of the game.
+        ( $_.BaseName -notmatch 'Virtual Console' ) -and
+
+        # Ignore pirate-flagged versions
+        ( $_.BaseName -notmatch '\([\w\s,]*Pirate' )
     }
 
     Write-Host 'Beginning conversion (this will take a while)'
@@ -744,7 +770,10 @@ Function Convert-Images {
             $parent = Split-Path -Parent $_.FullName
             $realName = ( Get-Content -Raw -LiteralPath $_.FullName ) -replace '\/', '\'
             ( $realPath = "$parent\$realName" )
-            Write-Verbose "Found symlink: ""$($_.FullName)"" => ""$realPath"""
+
+            if ( $Verbosity -match '^(Noisy|Extra)$') {
+                Write-Verbose "Found symlink: ""$($_.FullName)"" => ""$realPath"""
+            }
         }
 
         # Determine outfile name (skip if game not found)
@@ -761,8 +790,8 @@ Function Convert-Images {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
-                if ( $ShowConvertedFiles ) {
-                    Write-Host "Converting ""$useGameName"""
+                if ( $OutputConvertedFiles ) {
+                    Write-Host "$useGameName"
                 }
                 $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
                 $returnObj.Name = $_.BaseName
@@ -775,7 +804,7 @@ Function Convert-Images {
         }
 
         if ( !$found ) {
-            Write-Verbose "Could not find a definition for $($_.BaseName) in the provided DAT, skipping..."
+            Write-Verbose "Could not find a definition for ""$($_.BaseName)"" in the provided DAT, skipping..."
         }
     }
 
