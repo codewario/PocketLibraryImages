@@ -578,7 +578,8 @@ function Confirm-Jpeg {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory)]
-        [string]$FilePath
+        [string]$FilePath,
+        [switch]$MismatchWarning
     )
 
     # Signature for PNG files
@@ -610,7 +611,7 @@ function Confirm-Jpeg {
     }
 
     # Return true by default
-    if ( $FilePath -notmatch '\.(jpg|jpeg)$' ) {
+    if ( $MismatchWarning -and ( $FilePath -notmatch '\.(jpg|jpeg)$' ) ) {
         Write-Warning "JPEG masquerading: ""$FilePath"""
     }
     $true
@@ -620,14 +621,20 @@ function Confirm-Image {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory)]
-        [string]$FilePath
+        [string]$FilePath,
+        [switch]$MismatchWarning
     )
 
     # Check if the file is an expected image format
-    ( Confirm-Png $FilePath ) -or ( Confirm-Jpeg $FilePath )
+    if ( Confirm-Png $FilePath ) {
+        'PNG'
+    }
+    elseif ( Confirm-Jpeg $FilePath -MismatchWarning:$MismatchWarning ) {
+        'JPG'
+    }
 }
 
-Function Convert-PngToAnalogueLibraryBmp {
+Function Convert-ImageToAnalogueBmp {
     Param(
         [Parameter(Mandatory)]
         [string]$InFile,
@@ -636,7 +643,9 @@ Function Convert-PngToAnalogueLibraryBmp {
         [byte[]]$ImageHeader = @( 0x20, 0x49, 0x50, 0x41 ),
         [Parameter(Mandatory)]
         [ValidateSet('Original', 'BoxArts')]
-        [string]$ScaleMode
+        [string]$ScaleMode,
+        [ValidateSet('PNG', 'JPG')]
+        [string]$SourceFormat = 'PNG'
     )
 
     $oldErrorActionPreference = $ErrorActionPreference
@@ -658,11 +667,26 @@ Function Convert-PngToAnalogueLibraryBmp {
             )
 
             # Read image FileStream into BitmapSource
-            $bitmapSource = [System.Windows.Media.Imaging.PngBitmapDecoder]::new(
-                $imageStream,
-                [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
-                [System.Windows.Media.Imaging.BitmapCacheOption]::Default
-            ).Frames[0]
+            $bitmapSource = switch ( $SourceFormat ) {
+            
+                'PNG' {
+                    [System.Windows.Media.Imaging.PngBitmapDecoder]::new(
+                        $imageStream,
+                        [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+                        [System.Windows.Media.Imaging.BitmapCacheOption]::Default
+                    ).Frames[0]
+                    break
+                }
+
+                'JPG' {
+                    [System.Windows.Media.Imaging.JpegBitmapDecoder]::new(
+                        $imageStream,
+                        [System.Windows.Media.Imaging.BitmapCreateOptions]::PreservePixelFormat,
+                        [System.Windows.Media.Imaging.BitmapCacheOption]::Default
+                    ).Frames[0]
+                    break
+                }
+            }
 
             # Rotate -90 degrees per Analogue spec
             $rotatedBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
@@ -833,10 +857,13 @@ Function Convert-Images {
     # Convert each file to the .bin format
     $convertedCount = 0
     $results = $filesToConvert | ForEach-Object {
-        $inFile = if ( Confirm-Image $_.FullName ) {
+
+        $imageType = Confirm-Image $_.FullName -MismatchWarning
+        $inFile = if ( $imageType ) {
             $_.FullName
         }
         else {
+
             # If the ".png" file is not actually an image, assume it's a symlink with contents pointing to the correct filename
             $parent = Split-Path -Parent $_.FullName
             $realName = ( Get-Content -Raw -LiteralPath $_.FullName ) -replace '\/', '\'
@@ -845,11 +872,48 @@ Function Convert-Images {
             if ( $Verbosity -match '^(Noisy|Extra)$') {
                 Write-Verbose "Found symlink: ""$($_.FullName)"" => ""$realPath"""
             }
+
+            $imageType = Confirm-Image $realPath
+        }
+
+        # Determine the base name to use, for special cases
+        $escapedTitle = [regex]::Escape($_.BaseName)
+        $useBaseName = if ( ( $match = $specialCaseTitles -match "^$escapedTitle::" ) ) {
+            $actualBase, $caseReason, $datRedirect = $match -split '::', 3
+
+            if ( $caseReason -match '^Redirect' ) {
+
+                # Sanity check
+                if ( !$datRedirect ) {
+                    Write-Warning "Attempted redirect of ""$actualBase"" missing DAT reference (developer needs to fix!)"
+                    $_.BaseName
+                }
+                else {
+                    if ( $Verbosity -match '^(Extra|Noisy)$' ) {
+                        Write-Verbose "Redirecting ""$actualBase"" to DAT file record ""$datRedirect"""
+                    }
+                    $datRedirect
+                }
+            }
+            else {
+                # If there's no other rule, ignore the title
+                if ( $Verbosity -match '^(Extra|Noisy)$' ) {
+                    Write-Verbose "Ignoring ""$actualBase"": $caseReason"
+                }
+
+                return @{
+                    Success = $false
+                    Name    = $actualBase
+                    Output  = "Ignored: $caseReason"
+                }
+            }
+        }
+        else {
+            $_.BaseName
         }
 
         # Determine outfile name (skip if game not found)
         $found = $false
-        $ignored = $false
         foreach ( $game in $Dat ) {
 
             # Per `libretro-thumbnails` instructions, replace the following characters
@@ -859,60 +923,32 @@ Function Convert-Images {
             # &*/:`<>?\|"
             $useGameName = $game.name -replace '[&\*/:`<>\?\\\|"]', '_'
 
-            # Determine the base name to use, for special cases
-            $escapedTitle = [regex]::Escape($_.BaseName)
-            $useBaseName = if ( ( $match = $specialCaseTitles -match "^$escapedTitle::" ) ) {
-                $actualBase, $caseReason, $datRedirect = $match -split '::', 3
-
-                if ( $caseReason -match '^Redirect' ) {
-
-                    # Sanity check
-                    if ( !$datRedirect ) {
-                        Write-Warning "Attempted redirect of ""$actualBase"" missing DAT reference (developer needs to fix!)"
-                        $_.BaseName
-                    }
-                    else {
-                        Write-Warning "Redirecting ""$actualBase"" to DAT file record ""$datRedirect"""
-                        
-                        $datRedirect
-                    }
-                }
-                else {
-                    # If there's no other rule, ignore the title
-                    Write-Warning "Ignoring ""$actualBase"": $caseReason"
-                    $ignored = $true
-                    break
-                }
-            }
-            else {
-                $_.BaseName
-            }
-
             if ( $useBaseName -eq $useGameName ) {
                 $found = $true
                 $outFile = "$OutputDirectory\$($game.CRC).bin"
 
-                if ( $OutputConvertedFiles ) {
-                    Write-Host "$useGameName"
-                }
-                $returnObj = Convert-PngToAnalogueLibraryBmp -ScaleMode $ScaleMode $inFile $outFile
+                $returnObj = Convert-ImageToAnalogueBmp -ScaleMode $ScaleMode $inFile $outFile -SourceFormat $imageType
                 $returnObj.Name = $_.BaseName
 
                 if ($returnObj.Success ) {
                     $convertedCount++
                 }
+                $returnObj
                 break
             }
         }
 
-        if ( !$found -and !$ignored ) {
+        if ( !$found ) {
             Write-Verbose "Could not find a definition for ""$($_.BaseName)"" in the provided DAT, skipping..."
         }
     }
 
     $results | ForEach-Object {
-        if ( !( $_.Success ) ) {
-            Write-Warning ( "Failed to convert {0}: {1}" -f $_.Name, $_.Output )
+        if ( $OutputConvertedFiles ) {
+            $_
+        }
+        elseif ( !( $_.Success ) ) {
+            Write-Host ( 'Did not convert "{0}": {1}' -f $_.Name, $_.Output )
         }
     }
 
@@ -1009,8 +1045,9 @@ $MainMenuOptions =
 'Move Snaps Library', # 10
 'Move All Libraries', # 11
 '',
-'Clean up working directory', # 12
-'How to copy to Analogue OS' # 13
+'Open working directory', # 14
+'Clean up working directory', # 13
+'How to copy to Analogue OS' # 14
 
 do {
     $selection = Show-Menu -Title 'Analogue OS Library Image Pack Generator' -Options $MainMenuOptions -CancelSelectionLabel Quit -Message @'
@@ -1103,15 +1140,22 @@ Press Ctrl+C at any time to quit this script.
                 break
             }
 
-            # Clean up working directory
+            # Open working directory
             12 {
+                Clear-Host
+                Invoke-Item $tempWorkspace
+                break
+            }
+
+            # Clean up working directory
+            13 {
                 Write-Host 'Cleaning Up'
                 Remove-CacheDir
                 break
             }
 
             # How to copy to Analogue OS
-            13 {
+            14 {
                 Clear-Host
                 Show-HowToInstallMenu
                 break
