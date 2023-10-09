@@ -24,7 +24,7 @@ whether to show additional output when launching the script. Note that these
 flags will increase the conversion time a bit as writing to the console is not
 an instant operation:
 
-- `-ShowConvertedFiles`: Output the files which are converted to the console
+- `-OutputConvertedFiles`: Output the files which are converted to the console
 - `-Verbose`: Additional debugging output, useful when troubleshooting the script
 - `-Verbosity`: `Minimal`, `Extra`, or `Noisy`. Controls how much information is
 displayed when `-Verbose` is set. No effect otherwise. `Minimal` is the default.
