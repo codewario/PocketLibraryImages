@@ -660,7 +660,7 @@ Function Convert-ImageToAnalogueBmp {
 
             # Read in the initial image as FileStream
             [System.IO.FileStream]$imageStream = [System.IO.FileStream]::new(
-                "$(Resolve-Path $InFile)",
+                "$(Resolve-Path -LiteralPath $InFile)",
                 [System.IO.FileMode]::Open,
                 [System.IO.FileAccess]::Read,
                 [System.IO.FileShare]::Read
