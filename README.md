@@ -1,4 +1,4 @@
-# Analogue OS Library Image Generator
+# Analogue Pocket Library Image Generator
 
 This is an interactive tool to assist with downloading image libraries from
 [libretro-thumbnail](https://github.com/libretro-thumbnails/libretro-thumbnails)
@@ -80,10 +80,10 @@ then the script will work with the local archive you've pointed to instead of at
 obtain it from GitHub. Note that this script expects a `.zip` file; `.tar.gz` is not supported.
 
 ## I would just like an image library please
-Check out the latest [Release](https://github.com/codewario/PocketLibraryImageConversion/releases/latest)
+Check out the latest [Release](https://github.com/codewario/PocketLibraryImages/releases/latest)
 page for the most recent sample image packs.
 
-If you have a problem with the latest version, all [Releases](https://github.com/codewario/PocketLibraryImageConversion/releases/)
+If you have a problem with the latest version, all [Releases](https://github.com/codewario/PocketLibraryImages/releases/)
 have sample packs provided, so you may try one of those. You can find older stable versions of the
 script along with image packs for supported games at the time of release as well as prior versions
 of the script. Don't forget if you have a problem with the latest sample packs to
