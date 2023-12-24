@@ -833,8 +833,6 @@ Function Convert-Images {
         ( $_.Extension -match '^\.png$' ) -and
 
         # Ignore e-reader card entries, e-card names are usually suffixed with `-e` before the region
-        # TODO: This is breaking detection for Pokemon Kristall and Smargagd (German) due to the title
-        #       not having a space between the hyphen prefixing "Edition" in the title
         ( $_.BaseName -notmatch '^.*(-e|e\+).*\(' ) -and
 
         # Detect and remove romhacks of all types. Useless as Game Details won't show for these.
@@ -958,36 +956,6 @@ Function Convert-Images {
     Write-Host "Converted $convertedCount images in $timespan"
 }
 
-Function Convert-SingleImage {
-    Param(
-        [Parameter(Mandatory)]
-        [string]$InFile,
-        [Parameter(Mandatory)]
-        [string]$OutFile,
-        [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
-        [string]$ScaleMode,
-        [byte[]]$ImageHeader
-    )
-
-    if ( ( $imageFormat = Confirm-Image $InFile ) ) {
-        $convArgs = @{
-            ScaleMode    = $ScaleMode
-            InFile       = $InFile
-            OutFile      = $OutFile
-            SourceFormat = $imageFormat
-        }
-        if ( $ImageHeader ) {
-            $convArgs['ImageHeader'] = $ImageHeader
-        }
-
-        Convert-ImageToAnalogueBmp @convArgs
-    }
-    else {
-        Write-Host "This tool can only convert PNGs or JPGs"
-    }
-}
-
 # We need a function that will extract the files to short paths
 Function Expand-ImageArchive {
     Param(
@@ -1079,10 +1047,7 @@ $MainMenuOptions =
 '',
 'Open working directory', # 14
 'Clean up working directory', # 13
-'How to copy to Analogue OS', # 14
-'',
-'Convert single image (PNG or JPG)', # 15
-'DEVELOPER: Create Test Batch of palette files (not for general use)' # 16
+'How to copy to Analogue OS' # 14
 
 do {
     $selection = Show-Menu -Title 'Analogue OS Library Image Pack Generator' -Options $MainMenuOptions -CancelSelectionLabel Quit -Message @'
@@ -1194,60 +1159,6 @@ Press Ctrl+C at any time to quit this script.
                 Clear-Host
                 Show-HowToInstallMenu
                 break
-            }
-
-            # Arbitrary image conversion
-            15 {
-                Clear-Host
-                Write-Host 'Please provide the infile (PNG or JPG), outfile (use .bin extension), and scale mode (Original or BoxArts) as prompted'
-                Convert-SingleImage
-                Pause
-                break
-            }
-
-            # Create test batch of palette files
-            16 {
-                Clear-Host
-                $file = Read-Host -Prompt 'Please specify the source palette image to use'
-                $path = Read-Host -Prompt 'Please specify the directory to place the generated .pal files in'
-                
-                if ( !( Test-Path -PathType Container $path ) ) {
-                    mkdir $path
-                }
-
-                # Replace these with words in filename (if not skipping)
-                # &*/:`<>?\|"
-                $header = $null, $null, 0x50, 0x41
-                for ( $h = 32; $h -le 90; $h++ ) {
-                    
-                    # Skip ranges for non-alphanumeric chars besides space
-                    if ( $h -eq 33 ) {
-                        $h = 47
-                    }
-                    elseif ( $h -eq 58 ) {
-                        $h = 64
-                    }
-                    else {
-                        $header[0] = $h
-
-                        for ( $i = 32; $i -le 90; $i++ ) {
-
-                            if ( $i -eq 33 ) {
-                                $i = 47
-                            }
-                            elseif ( $i -eq 58 ) {
-                                $i = 64
-                            }
-                            else {
-                                $header[1] = $i
-
-                                # Last tested 2ZPA
-                                $filenamePrefix = "{0}{1}{2}{3}" -f ( [char]$header[0] -replace ' ', '_SPACE_'), ( [char]$header[1] -replace ' ', '_SPACE_'), [char]$header[2], [char]$header[3]
-                                Convert-SingleImage -InFile $file -OutFile "$path/${filenamePrefix}_pkred.pal" -ImageHeader $header -ScaleMode Original > $null
-                            }
-                        }
-                    }
-                }
             }
         }
     }
