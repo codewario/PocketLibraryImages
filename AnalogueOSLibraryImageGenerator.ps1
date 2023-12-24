@@ -826,7 +826,7 @@ Function Convert-Images {
         [Parameter(Mandatory)]
         [hashtable[]]$Dat,
         [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
+        [ValidateSet('Original', 'BoxArts', 'Titles')]
         [string]$ScaleMode
     )
 
@@ -932,7 +932,6 @@ Function Convert-Images {
         # Determine outfile name (skip if game not found)
         $found = $false
         foreach ( $game in $Dat ) {
-
             # Per `libretro-thumbnails` instructions, replace the following characters
             # in the game name with an underscore, as these characters are illegal in
             # file paths:
@@ -940,9 +939,18 @@ Function Convert-Images {
             # &*/:`<>?\|"
             $useGameName = $game.name -replace '[&\*/:`<>\?\\\|"]', '_'
 
+            # The CRC of games containing multiple ROMs is the second track unless the game only has one.
+            $gameCrc = if ( $game.CRC -is [array] ) {
+                $index = [math]::Min($game.CRC.Count, 3) - 1
+                $game.CRC[$index]
+            }
+            else {
+                $game.CRC
+            }
+
             if ( $useBaseName -eq $useGameName ) {
                 $found = $true
-                $outFile = "$OutputDirectory\$($game.CRC).bin"
+                $outFile = "$OutputDirectory\$($gameCrc).bin"
 
                 $returnObj = Convert-ImageToAnalogueBmp -ScaleMode $ScaleMode $inFile $outFile -SourceFormat $imageType
                 $returnObj.Name = $_.BaseName
