@@ -988,7 +988,7 @@ Function Convert-SingleImage {
         [Parameter(Mandatory)]
         [string]$OutFile,
         [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
+        [ValidateSet('Original', 'BoxArts', 'Titles')]
         [string]$ScaleMode,
         [byte[]]$ImageHeader
     )
