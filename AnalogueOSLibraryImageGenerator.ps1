@@ -833,6 +833,8 @@ Function Convert-Images {
         ( $_.Extension -match '^\.png$' ) -and
 
         # Ignore e-reader card entries, e-card names are usually suffixed with `-e` before the region
+        # TODO: This is breaking detection for Pokemon Kristall and Smargagd (German) due to the title
+        #       not having a space between the hyphen prefixing "Edition" in the title
         ( $_.BaseName -notmatch '^.*(-e|e\+).*\(' ) -and
 
         # Detect and remove romhacks of all types. Useless as Game Details won't show for these.
@@ -954,6 +956,36 @@ Function Convert-Images {
 
     $timespan = ( Get-Date ) - $startTime
     Write-Host "Converted $convertedCount images in $timespan"
+}
+
+Function Convert-SingleImage {
+    Param(
+        [Parameter(Mandatory)]
+        [string]$InFile,
+        [Parameter(Mandatory)]
+        [string]$OutFile,
+        [Parameter(Mandatory)]
+        [ValidateSet('Original', 'BoxArts')]
+        [string]$ScaleMode,
+        [byte[]]$ImageHeader
+    )
+
+    if ( ( $imageFormat = Confirm-Image $InFile ) ) {
+        $convArgs = @{
+            ScaleMode    = $ScaleMode
+            InFile       = $InFile
+            OutFile      = $OutFile
+            SourceFormat = $imageFormat
+        }
+        if ( $ImageHeader ) {
+            $convArgs['ImageHeader'] = $ImageHeader
+        }
+
+        Convert-ImageToAnalogueBmp @convArgs
+    }
+    else {
+        Write-Host "This tool can only convert PNGs or JPGs"
+    }
 }
 
 # We need a function that will extract the files to short paths
