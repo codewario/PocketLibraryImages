@@ -140,6 +140,7 @@ Function Copy-ToClipboard {
     }
 }
 
+## BEGIN MENU FRAMEWORK
 
 Function Show-Menu {
     Param(
@@ -214,6 +215,8 @@ Function Show-OKMenu {
 
     Show-Menu -Title $Title -Options 'OK' -Message $Message -NoAutoCancel > $null
 }
+
+## END MENU FRAMEWORK
 
 Function Show-Instructions {
     Show-OKMenu -Title Instructions -Message @"
@@ -500,6 +503,185 @@ Instead, "Move All Libraries" to a location on your PC, then using File
 Explorer copy the subfolder contents for the Library image type you want
 to the SD card using the layout above.
 '@
+}
+
+Function Show-OtherToolsMenu {
+    $options = ,
+    'Create Custom Palette File' # , # 1
+    # 'Create Custom Pallete File (Color Picker)'
+
+    $selection = Show-Menu -Title 'Other Tools' -Options $options -CancelSelectionLabel Back -Message @'
+Functions and features not necessarily related to image generation
+'@
+
+    switch ( $selection ) {
+
+        # Create Custom Palette File
+        1 {
+            Clear-Host
+            $path = ( ( Read-Host -Prompt 'Please enter the filepath to save the palette file to (*.pal)' ) -replace '^["'']' ) -replace '["'']$'
+            New-PaletteFile -FilePath $path
+            break
+        }
+    }
+}
+
+Function New-PaletteFile {
+    [CmdletBinding(DefaultParameterSetName = 'HexValues')]
+    Param(
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$BG0,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$BG1,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$BG2,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$BG3,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ00,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ01,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ02,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ03,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ10,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ11,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ12,
+
+        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [ValidateLength(6, 6)]
+        [string]$OBJ13,
+
+        [Parameter(ParameterSetName = 'ColorPicker')]
+        [switch]$ColorPicker,
+
+        [Parameter(Mandatory)]
+        [string]$FilePath
+    )
+
+    # all are mandatory so checking for the set should suffice to determine whether we need
+    # the color picker first
+    if ( $PSCmdlet.ParameterSetName -eq 'HexValues' ) {
+
+        # .pal files must be 56 bytes per the analogue spec
+        $bytes = [System.Collections.Generic.List[byte]]::new(56)
+
+        foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
+            $paramNames = $PSBoundParameters.Keys | Where-Object { $_ -match "^$type" } | Sort-Object -Descending
+
+            foreach ( $param in $paramNames ) {
+                # chunk the hex string into three pieces for R, G, and B values
+                $splitColorHex = $PSBoundParameters[$param] -split '(.{2})' -ne ''
+                if ( $splitColorHex[0] -eq '0x' ) {
+                    throw 'Hex values should not be prefixed with "0x"'
+                }
+
+                foreach ( $hex in $splitColorHex ) {
+                    $bytes.Add([byte]"0x$hex")
+                }
+            }
+        }
+
+        # Set Window to be same as background (per Analogue this is "normal")
+        # TODO: Consider picker for Window colors once it's better understood how
+        #       this affects the palette.
+        $W0Split = $PSBoundParameters['BG0'] -split '(.{2})' -ne ''
+        $W1Split = $PSBoundParameters['BG1'] -split '(.{2})' -ne ''
+        $W2Split = $PSBoundParameters['BG2'] -split '(.{2})' -ne ''
+        $W3Split = $PSBoundParameters['BG3'] -split '(.{2})' -ne ''
+
+        foreach ( $split in $W3Split, $W2Split, $W1Split, $W0Split) {
+            foreach ( $hex in $split ) {
+                $bytes.Add([byte]"0x$hex")
+            }
+        }
+
+        # Set LCDOff to white for now
+        # TODO: This should eventually be settable via a parameter and colorpicker mode
+        [byte[]]$lcdoffBytes = 255, 255, 255
+        $bytes.AddRange($lcdoffBytes)
+
+        # Write the footer
+        # 0x81 APGB
+        $bytes.AddRange([byte[]]@( 129, 65, 80, 71, 66 ))
+
+        # Write to file
+        [System.IO.File]::WriteAllBytes($FilePath, $bytes)
+    }
+    else {
+
+        # Prepare required resources for color picker
+        if ( !( 'System.Windows.Forms.ColorDialog' -as [type] ) ) {
+            Write-Verbose 'Loading System.Windows.Forms'
+            Add-Type -AssemblyName System.Windows.Forms
+        }
+
+        # Color picker, then re-invoke this function with hex values
+        $picker = New-Object System.Windows.Forms.ColorDialog -Property @{
+            SolidColorOnly = $true
+            FullOpen       = $true
+            AnyColor       = $false
+        }
+
+        Write-Host @'
+A color picker will pop up for each palette color (12 total).
+
+There are 4 colors each for the BG, OBJ0, and OBJ1 palette groups.
+
+If you are unsure of what these colors represent, you may reference the following
+site if you wish to re-create one of the built-in palettes from the Game Boy Color:
+
+https://tcrf.net/Notes:Game_Boy_Color_Bootstrap_ROM
+
+Click cancel to abort at any time.
+'@
+
+        $paletteHash = @{}
+        foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
+            foreach ($i in 0..3) {
+
+                $name = "$type$i"
+                Write-Host "${name}: " -NoNewline
+                $result = $picker.showDialog()
+
+                if ( $result -eq 'Cancel' ) {
+                    Write-Host
+                    throw 'User canceled the operation'
+                }
+
+                $paletteHash[$name] = '{0:X2}{1:X2}{2:X2}' -f $picker.Color.R, $picker.Color.G, $picker.Color.B
+                Write-Host $paletteHash[$name]
+            }
+        }
+
+        # Invoke this function with the values
+        $paletteHash | New-PaletteFile
+    }
 }
 
 Function Get-LibretroThumbnailConsoleImageLinks {
@@ -1079,7 +1261,9 @@ $MainMenuOptions =
 '',
 'Open working directory', # 14
 'Clean up working directory', # 13
-'How to copy to Analogue OS' # 14
+'How to copy to Analogue OS', # 14
+'',
+'Other Tools' # 15
 
 do {
     $selection = Show-Menu -Title 'Analogue OS Library Image Pack Generator' -Options $MainMenuOptions -CancelSelectionLabel Quit -Message @'
@@ -1190,6 +1374,13 @@ Press Ctrl+C at any time to quit this script.
             14 {
                 Clear-Host
                 Show-HowToInstallMenu
+                break
+            }
+
+            # Other Tools
+            15 {
+                Clear-Host
+                Show-OtherToolsMenu
                 break
             }
         }
