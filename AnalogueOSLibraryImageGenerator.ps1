@@ -507,8 +507,8 @@ to the SD card using the layout above.
 
 Function Show-OtherToolsMenu {
     $options = ,
-    'Create Custom Palette File' # , # 1
-    # 'Create Custom Pallete File (Color Picker)'
+    'Create Custom Palette File', # 1
+    'Create Custom Pallete File (Color Picker)' # 2
 
     $selection = Show-Menu -Title 'Other Tools' -Options $options -CancelSelectionLabel Back -Message @'
 Functions and features not necessarily related to image generation
@@ -520,10 +520,90 @@ Functions and features not necessarily related to image generation
         1 {
             Clear-Host
             $path = ( ( Read-Host -Prompt 'Please enter the filepath to save the palette file to (*.pal)' ) -replace '^["'']' ) -replace '["'']$'
+            if( $path -notmatch '\.\S+$' ) {
+                $path = "$path.pal"
+            }
             New-PaletteFile -FilePath $path
+            Pause
+            break
+        }
+
+        # Create Custom Pallete File (Color Picker)
+        2 {
+            Clear-Host
+            Show-ColorPickerPrompt
+            Pause
             break
         }
     }
+}
+
+Function Show-ColorPickerPrompt {
+    Show-OKMenu -Message @'
+A color picker will pop up for each palette color (12 total).
+
+There are 4 colors each for the BG, OBJ0, and OBJ1 palette groups.
+
+Window palette is not yet customizeable and for now will match BG.
+
+If you are unsure of what these colors represent, you may reference the following
+site if you wish to re-create one of the built-in palettes from the Game Boy Color:
+
+https://tcrf.net/Notes:Game_Boy_Color_Bootstrap_ROM
+
+Click cancel to abort at any time.
+'@
+
+    $path = ( ( Read-Host -Prompt 'Please enter the filepath to save the palette file to (*.pal)' ) -replace '^["'']' ) -replace '["'']$'
+    # Give an extension if none provided
+    if ( $path -notmatch '\.\S+$' ) {
+        $path = "$path.pal"
+    }
+
+    Invoke-ColorPicker | New-PaletteFile -FilePath $path
+    Pause
+}
+
+Function Invoke-ColorPicker {
+    # Prepare required resources for color picker
+    if ( !( 'System.Windows.Forms.ColorDialog' -as [type] ) ) {
+        Write-Verbose 'Loading System.Windows.Forms'
+        Add-Type -AssemblyName System.Windows.Forms
+    }
+
+    $picker = New-Object System.Windows.Forms.ColorDialog -Property @{
+        SolidColorOnly = $true
+        FullOpen       = $true
+        AnyColor       = $false
+    }
+
+    try {
+        $paletteHash = @{}
+        foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
+            foreach ($i in 0..3) {
+
+                $name = "$type$i"
+                Write-Host "${name}: " -NoNewline
+
+                if ( $picker.showDialog() -eq 'Cancel' ) {
+                    Write-Host
+                    throw 'User canceled the operation'
+                }
+
+                $paletteHash[$name] = '{0:X2}{1:X2}{2:X2}' -f $picker.Color.R, $picker.Color.G, $picker.Color.B
+                Write-Host $paletteHash[$name]
+            }
+        }
+    }
+    finally {
+        if ( $picker ) {
+            $picker.Dispose()
+            $picker = $null
+        }
+    }
+
+    # return the palette hash object
+    $paletteHash
 }
 
 Function New-PaletteFile {
@@ -577,111 +657,56 @@ Function New-PaletteFile {
         [ValidateLength(6, 6)]
         [string]$OBJ13,
 
-        [Parameter(ParameterSetName = 'ColorPicker')]
-        [switch]$ColorPicker,
-
         [Parameter(Mandatory)]
         [string]$FilePath
     )
 
-    # all are mandatory so checking for the set should suffice to determine whether we need
-    # the color picker first
-    if ( $PSCmdlet.ParameterSetName -eq 'HexValues' ) {
+    # .pal files must be 56 bytes per the analogue spec
+    $bytes = [System.Collections.Generic.List[byte]]::new(56)
 
-        # .pal files must be 56 bytes per the analogue spec
-        $bytes = [System.Collections.Generic.List[byte]]::new(56)
+    foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
+        # Analogue expects each color per type in reverse order from TCRF's docs
+        $paramNames = $PSBoundParameters.Keys | Where-Object { $_ -match "^$type" } | Sort-Object -Descending
 
-        foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
-            $paramNames = $PSBoundParameters.Keys | Where-Object { $_ -match "^$type" } | Sort-Object -Descending
-
-            foreach ( $param in $paramNames ) {
-                # chunk the hex string into three pieces for R, G, and B values
-                $splitColorHex = $PSBoundParameters[$param] -split '(.{2})' -ne ''
-                if ( $splitColorHex[0] -eq '0x' ) {
-                    throw 'Hex values should not be prefixed with "0x"'
-                }
-
-                foreach ( $hex in $splitColorHex ) {
-                    $bytes.Add([byte]"0x$hex")
-                }
+        foreach ( $param in $paramNames ) {
+            # chunk the hex string into three pieces for R, G, and B values
+            $splitColorHex = $PSBoundParameters[$param] -split '(.{2})' -ne ''
+            if ( $splitColorHex[0] -eq '0x' ) {
+                throw 'Hex values should not be prefixed with "0x"'
             }
-        }
 
-        # Set Window to be same as background (per Analogue this is "normal")
-        # TODO: Consider picker for Window colors once it's better understood how
-        #       this affects the palette.
-        $W0Split = $PSBoundParameters['BG0'] -split '(.{2})' -ne ''
-        $W1Split = $PSBoundParameters['BG1'] -split '(.{2})' -ne ''
-        $W2Split = $PSBoundParameters['BG2'] -split '(.{2})' -ne ''
-        $W3Split = $PSBoundParameters['BG3'] -split '(.{2})' -ne ''
-
-        foreach ( $split in $W3Split, $W2Split, $W1Split, $W0Split) {
-            foreach ( $hex in $split ) {
+            foreach ( $hex in $splitColorHex ) {
                 $bytes.Add([byte]"0x$hex")
             }
         }
-
-        # Set LCDOff to white for now
-        # TODO: This should eventually be settable via a parameter and colorpicker mode
-        [byte[]]$lcdoffBytes = 255, 255, 255
-        $bytes.AddRange($lcdoffBytes)
-
-        # Write the footer
-        # 0x81 APGB
-        $bytes.AddRange([byte[]]@( 129, 65, 80, 71, 66 ))
-
-        # Write to file
-        [System.IO.File]::WriteAllBytes($FilePath, $bytes)
     }
-    else {
 
-        # Prepare required resources for color picker
-        if ( !( 'System.Windows.Forms.ColorDialog' -as [type] ) ) {
-            Write-Verbose 'Loading System.Windows.Forms'
-            Add-Type -AssemblyName System.Windows.Forms
+    # Set Window to be same as background (per Analogue this is "normal")
+    # TODO: Consider picker for Window colors once it's better understood how
+    #       this affects the palette.
+    $W0Split = $PSBoundParameters['BG0'] -split '(.{2})' -ne ''
+    $W1Split = $PSBoundParameters['BG1'] -split '(.{2})' -ne ''
+    $W2Split = $PSBoundParameters['BG2'] -split '(.{2})' -ne ''
+    $W3Split = $PSBoundParameters['BG3'] -split '(.{2})' -ne ''
+
+    # Once again, Analogue expects reverse order from TCRF
+    foreach ( $split in $W3Split, $W2Split, $W1Split, $W0Split) {
+        foreach ( $hex in $split ) {
+            $bytes.Add([byte]"0x$hex")
         }
-
-        # Color picker, then re-invoke this function with hex values
-        $picker = New-Object System.Windows.Forms.ColorDialog -Property @{
-            SolidColorOnly = $true
-            FullOpen       = $true
-            AnyColor       = $false
-        }
-
-        Write-Host @'
-A color picker will pop up for each palette color (12 total).
-
-There are 4 colors each for the BG, OBJ0, and OBJ1 palette groups.
-
-If you are unsure of what these colors represent, you may reference the following
-site if you wish to re-create one of the built-in palettes from the Game Boy Color:
-
-https://tcrf.net/Notes:Game_Boy_Color_Bootstrap_ROM
-
-Click cancel to abort at any time.
-'@
-
-        $paletteHash = @{}
-        foreach ( $type in 'BG', 'OBJ0', 'OBJ1' ) {
-            foreach ($i in 0..3) {
-
-                $name = "$type$i"
-                Write-Host "${name}: " -NoNewline
-                $result = $picker.showDialog()
-
-                if ( $result -eq 'Cancel' ) {
-                    Write-Host
-                    throw 'User canceled the operation'
-                }
-
-                $paletteHash[$name] = '{0:X2}{1:X2}{2:X2}' -f $picker.Color.R, $picker.Color.G, $picker.Color.B
-                Write-Host $paletteHash[$name]
-            }
-        }
-
-        # Invoke this function with the values
-        $paletteHash | New-PaletteFile
     }
+
+    # Set LCDOff to white for now
+    # TODO: This should eventually be settable via a parameter and colorpicker mode
+    [byte[]]$lcdoffBytes = 255, 255, 255
+    $bytes.AddRange($lcdoffBytes)
+
+    # Write the footer
+    # 0x81 APGB
+    $bytes.AddRange([byte[]]@( 129, 65, 80, 71, 66 ))
+
+    # Write to file
+    [System.IO.File]::WriteAllBytes($FilePath, $bytes)
 }
 
 Function Get-LibretroThumbnailConsoleImageLinks {
