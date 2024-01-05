@@ -508,7 +508,8 @@ to the SD card using the layout above.
 Function Show-OtherToolsMenu {
     $options = ,
     'Create Custom Palette File', # 1
-    'Create Custom Pallete File (Color Picker)' # 2
+    'Create Custom Pallete File (Color Picker)', # 2
+    'Create GBC Boot Rom Palettes' # 3
 
     $selection = Show-Menu -Title 'Other Tools' -Options $options -CancelSelectionLabel Back -Message @'
 Functions and features not necessarily related to image generation
@@ -520,7 +521,7 @@ Functions and features not necessarily related to image generation
         1 {
             Clear-Host
             $path = ( ( Read-Host -Prompt 'Please enter the filepath to save the palette file to (*.pal)' ) -replace '^["'']' ) -replace '["'']$'
-            if( $path -notmatch '\.\S+$' ) {
+            if ( $path -notmatch '\.\S+$' ) {
                 $path = "$path.pal"
             }
             New-PaletteFile -FilePath $path
@@ -535,7 +536,51 @@ Functions and features not necessarily related to image generation
             Pause
             break
         }
+
+        # Create GBC Boot Rom Palettes
+        3 {
+            Clear-Host
+            if ( !( Get-InstalledModule -EA Ignore 7Zip4Powershell ) ) {
+                $newline = [Environment]::NewLine
+                while ( ( $consent = Read-Host -Prompt "This operation requires the ''7Zip4Powershell'' module.${NEWLINE}Would you like to install it in the user scope? (Y/N)") -notin 'y', 'n' ) {}
+                if ( $consent -eq 'n' ) {
+                    break
+                }
+            }
+            Show-GBCBootRomInstructions
+            Pause
+            Break
+        }
     }
+}
+
+Function Show-GBCBootRomInstructions {
+    Show-OKMenu -Message @'
+Once this prompt is dismissed, information about the palettes stored inside
+the GBC boot rom will be obtained from https://tcrf.net, then will use that
+information to generate the following palettes:
+
+- Game Palettes
+- Button Combo Palettes
+- Unused Palettes
+
+They will be saved in the current directory under the "gbc_palettes" folder.
+
+Game Palettes are the palettes used for certain GB games on the GBC that were
+not GB-enhanced, such as Metroid II and Pokemon Red/Blue. The "_.pal"
+file is a "dummy" palette used for unrecognized and unlicensed GB games.
+
+Button Combo Palettes are the alternative palettes that non-enhanced GB
+games could be set to with button presses and combinations.
+
+Unused Palettes are palettes available in the GBC boot rom but have colors or
+color combinations that are not used by any game.
+
+To install on your Pocket, copy the palette folders to
+"/Assets/gb/common/Palettes" on the Pocket's SD card.
+'@
+
+    Invoke-BootRomPaletteCreation
 }
 
 Function Show-ColorPickerPrompt {
@@ -543,15 +588,24 @@ Function Show-ColorPickerPrompt {
 A color picker will pop up for each palette color (12 total).
 
 There are 4 colors each for the BG, OBJ0, and OBJ1 palette groups.
+Generally, for each palette type, usually the color should get darker
+per index but this is not a requirement.
 
-Window palette is not yet customizeable and for now will match BG.
+Inputting values for each color into the picker is valid, but you
+must use numeric values 0-255, it does not accept hex values like
+FF (255). These values will be converted to hexadecimal digits when
+creating the palette file.
 
-If you are unsure of what these colors represent, you may reference the following
-site if you wish to re-create one of the built-in palettes from the Game Boy Color:
+LCDOff is set to FFFFFF by default.
+
+If you are unsure of what these colors represent, you may reference the
+following site if you wish to re-create one of the built-in palettes from
+the Game Boy Color:
 
 https://tcrf.net/Notes:Game_Boy_Color_Bootstrap_ROM
 
-Click cancel to abort at any time.
+Click cancel to abort at any time, except when canceling while setting LCDOff which
+will continue with FFFFFF (White) as the LCDOff color.
 '@
 
     $path = ( ( Read-Host -Prompt 'Please enter the filepath to save the palette file to (*.pal)' ) -replace '^["'']' ) -replace '["'']$'
@@ -560,11 +614,175 @@ Click cancel to abort at any time.
         $path = "$path.pal"
     }
 
-    Invoke-ColorPicker | New-PaletteFile -FilePath $path
-    Pause
+    $paletteHash = Invoke-ColorPicker
+    New-PaletteFile -FilePath $path @paletteHash
+}
+
+Function Get-TcrfBootRomPaletteArchive {
+    Param(
+        [Uri]$Url = 'https://tcrf.net/images/a/af/CGB_Bootstrap_ROM_tables.7z',
+        [string]$OutFile = './boot_rom_tables/palettedefs.7z'
+    )
+
+    $outDir = Split-Path -Parent $OutFile
+
+    if ( !( Test-Path -PathType Container $outDir ) ) {
+        New-Item -ItemType Directory $outDir
+    }
+
+    $oldProgressPreference = $ProgressPreference
+    try {
+        Invoke-WebRequest $Url -OutFile "$OutFile"
+    }
+    finally {
+        $ProgressPreference = $oldProgressPreference
+    }
+
+    [System.IO.FileInfo]$OutFile
+}
+
+Function Expand-PaletteArchive {
+    Param(
+        [Parameter(Mandatory)]
+        [Alias('Path')]
+        [string]$ArchivePath,
+        [string]$OutDir = './'
+    )
+
+    # Check for and install module
+    if ( !( Get-InstalledModule -EA SilentlyContinue 7Zip4Powershell ) ) {
+        Write-Host 'Installing required module for this operation: 7Zip4Powershell'
+        Install-Module 7Zip4Powershell -Force -Scope CurrentUser
+    }
+
+    Expand-7Zip -ArchiveFileName $ArchivePath -TargetPath $OutDir
+}
+
+Function Invoke-BootRomPaletteCreation {
+    Param(
+        [string]$OutDir = './gbc_palettes'
+    )
+    Write-Host 'Downloading boot rom palette archive'
+    $file = Get-TcrfBootRomPaletteArchive
+
+    Write-Host 'Expanding archive'
+    Expand-PaletteArchive -ArchivePath $file.FullName -OutDir $file.DirectoryName
+
+    # Note that these CSVs are TAB delimited
+    $buttonCombosCsv = Import-Csv -Delimiter `t "$($file.DirectoryName)/listButtonCombos.csv"
+    $unusedColorsCsv = Import-Csv -Delimiter `t "$($file.DirectoryName)/listUnusedColors.csv"
+    $usedWithNamesCsv = Import-Csv -Delimiter `t "$($file.DirectoryName)/listUsedWNames.csv"
+
+    # Button Combo Palettes
+    $subdir = "$OutDir/Button Combo Palettes"
+    if ( !(Test-Path -PathType Container $subdir ) ) {
+        New-Item -ItemType Directory $subdir > $null
+    }
+            
+    foreach ( $config in $buttonCombosCsv ) {
+        # For name use Table Number followed by Table Entry in 2 digit hex form e.g. 0102 for TN 0x01 with TE 0x02
+        $name = $config.'Button Combo'
+        try {
+            # Remove # from the hex code in the csv
+            $paletteHash = @{
+                BG0   = $config.'BG Color 0x00'.Remove(0, 1)
+                BG1   = $config.'BG Color 0x01'.Remove(0, 1)
+                BG2   = $config.'BG Color 0x02'.Remove(0, 1)
+                BG3   = $config.'BG Color 0x03'.Remove(0, 1)
+                OBJ00 = $config.'OBJ0 Color 0x00'.Remove(0, 1)
+                OBJ01 = $config.'OBJ0 Color 0x01'.Remove(0, 1)
+                OBJ02 = $config.'OBJ0 Color 0x02'.Remove(0, 1)
+                OBJ03 = $config.'OBJ0 Color 0x03'.Remove(0, 1)
+                OBJ10 = $config.'OBJ1 Color 0x00'.Remove(0, 1)
+                OBJ11 = $config.'OBJ1 Color 0x01'.Remove(0, 1)
+                OBJ12 = $config.'OBJ1 Color 0x02'.Remove(0, 1)
+                OBJ13 = $config.'OBJ1 Color 0x03'.Remove(0, 1)
+            }
+
+            Write-Host "Creating palette for button combo ""$name"""
+            New-PaletteFile -FilePath "$subdir/$name.pal" @paletteHash
+        }
+        catch {
+            Write-Warning "Failed to create palette file for ""NAMEHERE"": $_"
+        }
+    }
+
+    # Unused Palettes
+    $subdir = "$OutDir/Unused Palettes"
+    if ( !(Test-Path -PathType Container $subdir ) ) {
+        New-Item -ItemType Directory $subdir > $null
+    }
+            
+    foreach ( $config in $unusedColorsCsv ) {
+        # For name use Table Number followed by Table Entry in 2 digit hex form e.g. 0102 for TN 0x01 with TE 0x02
+        $name = 'Unused {0}{1}' -f $config.'Table Number'.Remove(0, 2), $config.'Table Entry'.Remove(0, 2)
+        try {
+            # Remove # from the hex code in the csv
+            $paletteHash = @{
+                BG0   = $config.'BG Color 0x00'.Remove(0, 1)
+                BG1   = $config.'BG Color 0x01'.Remove(0, 1)
+                BG2   = $config.'BG Color 0x02'.Remove(0, 1)
+                BG3   = $config.'BG Color 0x03'.Remove(0, 1)
+                OBJ00 = $config.'OBJ0 Color 0x00'.Remove(0, 1)
+                OBJ01 = $config.'OBJ0 Color 0x01'.Remove(0, 1)
+                OBJ02 = $config.'OBJ0 Color 0x02'.Remove(0, 1)
+                OBJ03 = $config.'OBJ0 Color 0x03'.Remove(0, 1)
+                OBJ10 = $config.'OBJ1 Color 0x00'.Remove(0, 1)
+                OBJ11 = $config.'OBJ1 Color 0x01'.Remove(0, 1)
+                OBJ12 = $config.'OBJ1 Color 0x02'.Remove(0, 1)
+                OBJ13 = $config.'OBJ1 Color 0x03'.Remove(0, 1)
+            }
+
+            Write-Host "Creating palette for ""$name"""
+            New-PaletteFile -FilePath "$subdir/$name.pal" @paletteHash
+        }
+        catch {
+            Write-Warning "Failed to create palette file for ""NAMEHERE"": $_"
+        }
+    }
+
+    # Game Palettes
+    $subdir = "$OutDir/Game Palettes"
+    if ( !(Test-Path -PathType Container $subdir ) ) {
+        New-Item -ItemType Directory $subdir > $null
+    }
+
+    foreach ( $config in $usedWithNamesCsv ) {
+        # multiple titles/revs sharing a palette are delimited by ;; 
+        $games = $config.Games -split ';;\s*'
+
+        # Remove # from the hex code in the csv
+        $paletteHash = @{
+            BG0   = $config.'BG Color 0x00'.Remove(0, 1)
+            BG1   = $config.'BG Color 0x01'.Remove(0, 1)
+            BG2   = $config.'BG Color 0x02'.Remove(0, 1)
+            BG3   = $config.'BG Color 0x03'.Remove(0, 1)
+            OBJ00 = $config.'OBJ0 Color 0x00'.Remove(0, 1)
+            OBJ01 = $config.'OBJ0 Color 0x01'.Remove(0, 1)
+            OBJ02 = $config.'OBJ0 Color 0x02'.Remove(0, 1)
+            OBJ03 = $config.'OBJ0 Color 0x03'.Remove(0, 1)
+            OBJ10 = $config.'OBJ1 Color 0x00'.Remove(0, 1)
+            OBJ11 = $config.'OBJ1 Color 0x01'.Remove(0, 1)
+            OBJ12 = $config.'OBJ1 Color 0x02'.Remove(0, 1)
+            OBJ13 = $config.'OBJ1 Color 0x03'.Remove(0, 1)
+        }
+
+        foreach ( $game in $games ) {
+            try {
+                Write-Host "Creating palette for ""$game"""
+                New-PaletteFile -FilePath "$subdir/$game.pal" @paletteHash
+            }
+            catch {
+                Write-Warning "Failed to create palette file for ""$game"": $_"
+            }
+        }
+    }
 }
 
 Function Invoke-ColorPicker {
+    Param(
+        [switch]$PickLCDOff
+    )
     # Prepare required resources for color picker
     if ( !( 'System.Windows.Forms.ColorDialog' -as [type] ) ) {
         Write-Verbose 'Loading System.Windows.Forms'
@@ -576,6 +794,8 @@ Function Invoke-ColorPicker {
         FullOpen       = $true
         AnyColor       = $false
     }
+
+    $hexFormatString = '{0:X2}{1:X2}{2:X2}'
 
     try {
         $paletteHash = @{}
@@ -590,9 +810,13 @@ Function Invoke-ColorPicker {
                     throw 'User canceled the operation'
                 }
 
-                $paletteHash[$name] = '{0:X2}{1:X2}{2:X2}' -f $picker.Color.R, $picker.Color.G, $picker.Color.B
+                $paletteHash[$name] = $hexFormatString -f $picker.Color.R, $picker.Color.G, $picker.Color.B
                 Write-Host $paletteHash[$name]
             }
+        }
+
+        if ( $PickLCDOff -and $picker.ShowDialog() -ne 'Cancel' ) {
+            $paletteHash['LCDOff'] = $hexFormatString -f $picker.Color.R, $picker.Color.G, $picker.Color.B
         }
     }
     finally {
@@ -609,53 +833,57 @@ Function Invoke-ColorPicker {
 Function New-PaletteFile {
     [CmdletBinding(DefaultParameterSetName = 'HexValues')]
     Param(
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$BG0,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$BG1,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$BG2,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$BG3,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ00,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ01,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ02,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ03,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ10,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ11,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ12,
 
-        [Parameter(ParameterSetName = 'HexValues', Mandatory, ValueFromPipeline)]
+        [Parameter(ParameterSetName = 'HexValues', Mandatory)]
         [ValidateLength(6, 6)]
         [string]$OBJ13,
+
+        [Parameter(ParameterSetName = 'HexValues')]
+        [ValidateLength(6, 6)]
+        [string]$LCDOff = 'FFFFFF',
 
         [Parameter(Mandatory)]
         [string]$FilePath
@@ -696,10 +924,10 @@ Function New-PaletteFile {
         }
     }
 
-    # Set LCDOff to white for now
-    # TODO: This should eventually be settable via a parameter and colorpicker mode
-    [byte[]]$lcdoffBytes = 255, 255, 255
-    $bytes.AddRange($lcdoffBytes)
+    $lcdoffSplit = $LCDOff -split '(.{2})' -ne ''
+    foreach ( $hex in $lcdoffSplit ) {
+        $bytes.Add([byte]"0x$hex")
+    }
 
     # Write the footer
     # 0x81 APGB

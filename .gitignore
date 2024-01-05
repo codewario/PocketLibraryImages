@@ -4,6 +4,11 @@ GBA-M/
 GBA-V/
 GG/
 lib/
+dl/
+boot_rom_tables/
+*_palettes/
+
 *.dat
 *.png
 *.zip
+*.pal
