@@ -627,7 +627,7 @@ Function Get-TcrfBootRomPaletteArchive {
     $outDir = Split-Path -Parent $OutFile
 
     if ( !( Test-Path -PathType Container $outDir ) ) {
-        New-Item -ItemType Directory $outDir
+        New-Item -ItemType Directory $outDir > $null
     }
 
     $oldProgressPreference = $ProgressPreference
@@ -666,6 +666,8 @@ Function Invoke-BootRomPaletteCreation {
     $file = Get-TcrfBootRomPaletteArchive
 
     Write-Host 'Expanding archive'
+    Write-Host "ArchivePath: $($file.FullName)"
+    Write-Host "OutDir: $($file.DirectoryName)"
     Expand-PaletteArchive -ArchivePath $file.FullName -OutDir $file.DirectoryName
 
     # Note that these CSVs are TAB delimited
@@ -768,12 +770,18 @@ Function Invoke-BootRomPaletteCreation {
         }
 
         foreach ( $game in $games ) {
+            $useGame = if ( [string]::IsNullOrWhiteSpace($game)) {
+                '_'
+            }
+            else {
+                $game
+            }
             try {
-                Write-Host "Creating palette for ""$game"""
-                New-PaletteFile -FilePath "$subdir/$game.pal" @paletteHash
+                Write-Host "Creating palette for ""$useGame"""
+                New-PaletteFile -FilePath "$subdir/$useGame.pal" @paletteHash
             }
             catch {
-                Write-Warning "Failed to create palette file for ""$game"": $_"
+                Write-Warning "Failed to create palette file for ""$useGame"": $_"
             }
         }
     }
