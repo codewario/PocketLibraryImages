@@ -396,9 +396,13 @@ Function Show-ConvertPrompt {
     $scaleMode = if ( $LibraryType -eq 'BoxArts' ) {
         'BoxArts'
     }
+    elseif ($LibraryType -eq 'Titles') {
+        'Titles'
+    }
     else {
         'Original'
     }
+
     Convert-Images -InputDirectory "$tempExtractionPath\$LibraryType" -OutputDirectory $outdir -Dat $dat -ScaleMode $scaleMode
     Pause
 }
@@ -1085,7 +1089,7 @@ Function Convert-ImageToAnalogueBmp {
         [string]$OutFile,
         [byte[]]$ImageHeader = @( 0x20, 0x49, 0x50, 0x41 ),
         [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
+        [ValidateSet('Original', 'BoxArts', 'Titles')]
         [string]$ScaleMode,
         [ValidateSet('PNG', 'JPG')]
         [string]$SourceFormat = 'PNG'
@@ -1131,36 +1135,47 @@ Function Convert-ImageToAnalogueBmp {
                 }
             }
 
-            # Rotate -90 degrees per Analogue spec
-            $rotatedBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
-                $bitmapSource,
-                [System.Windows.Media.RotateTransform]::new(-90)
-            )
-
             # Determine aspect ratio for scaling
-            # Only need height ratio as target canvas is landscape oriented
             $scaledBitmap = switch ( $ScaleMode ) {
                 'Original' {
                     # Don't scale at all, just use the rotated bitmap
-                    $rotatedBitmap
+                    $bitmapSource
                     break
                 }
 
-                'BoxArts' {
-                    $scale = 165 / $rotatedBitmap.PixelHeight
+                'Titles' {
+                    $scaleX = 165 / $bitmapSource.PixelWidth
+                    $scaleY = 149 / $bitmapSource.PixelHeight
 
                     [System.Windows.Media.Imaging.TransformedBitmap]::new(
-                        $rotatedBitmap,
+                        $bitmapSource,
+                        [System.Windows.Media.ScaleTransform]::new($scaleX, $scaleY)
+                    )
+                    break
+                }
+            
+                'BoxArts' {
+                    # Only need width ratio for box arts
+                    $scale = 165 / $bitmapSource.PixelWidth
+
+                    [System.Windows.Media.Imaging.TransformedBitmap]::new(
+                        $bitmapSource,
                         [System.Windows.Media.ScaleTransform]::new($scale, $scale)
                     )
                     break
                 }
             }
 
+            # Rotate -90 degrees per Analogue spec
+            $rotatedBitmap = [System.Windows.Media.Imaging.TransformedBitmap]::new(
+                $scaledBitmap,
+                [System.Windows.Media.RotateTransform]::new(-90)
+            )
+
             # Create new bitmap from rotated bitmap using BGRA32 pixel format
             $convertedBitmap = [System.Windows.Media.Imaging.FormatConvertedBitmap]::new()
             $convertedBitmap.BeginInit()
-            $convertedBitmap.Source = $scaledBitmap
+            $convertedBitmap.Source = $rotatedBitmap
             $convertedBitmap.DestinationFormat = [System.Windows.Media.PixelFormats]::Bgra32
             $convertedBitmap.EndInit()
 
@@ -1175,18 +1190,18 @@ Function Convert-ImageToAnalogueBmp {
             $bytesWritten += $ImageHeader.Length
 
             # Dimensions as bytes, reverse order for little endian
-            $h_bytes = [BitConverter]::GetBytes(( [int16]( $convertedBitmap.PixelHeight ) ))
             $w_bytes = [BitConverter]::GetBytes(( [int16]( $convertedBitmap.PixelWidth ) ))
+            $h_bytes = [BitConverter]::GetBytes(( [int16]( $convertedBitmap.PixelHeight ) ))
             if ( !( [BitConverter]::IsLittleEndian ) ) {
-                [array]::Reverse($h_bytes)
                 [array]::Reverse($w_bytes)
+                [array]::Reverse($h_bytes)
             }
 
             # Write image dimensions in bytes
-            $imageStream2.Write($h_bytes, 0, $h_bytes.Length)
-            $bytesWritten += $h_bytes.Length
             $imageStream2.Write($w_bytes, 0, $w_bytes.Length)
             $bytesWritten += $w_bytes.Length
+            $imageStream2.Write($h_bytes, 0, $h_bytes.Length)
+            $bytesWritten += $h_bytes.Length
 
             # Create pixel buffer and calculate stride
             $pixels = [byte[]]::new(( $convertedBitmap.PixelWidth * $convertedBitmap.PixelHeight * 4 ))
@@ -1254,7 +1269,7 @@ Function Convert-Images {
         [Parameter(Mandatory)]
         [hashtable[]]$Dat,
         [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
+        [ValidateSet('Original', 'BoxArts', 'Titles')]
         [string]$ScaleMode
     )
 
@@ -1360,7 +1375,6 @@ Function Convert-Images {
         # Determine outfile name (skip if game not found)
         $found = $false
         foreach ( $game in $Dat ) {
-
             # Per `libretro-thumbnails` instructions, replace the following characters
             # in the game name with an underscore, as these characters are illegal in
             # file paths:
@@ -1368,9 +1382,18 @@ Function Convert-Images {
             # &*/:`<>?\|"
             $useGameName = $game.name -replace '[&\*/:`<>\?\\\|"]', '_'
 
+            # The CRC of games containing multiple ROMs is the second track unless the game only has one.
+            $gameCrc = if ( $game.CRC -is [array] ) {
+                $index = [math]::Min($game.CRC.Count, 3) - 1
+                $game.CRC[$index]
+            }
+            else {
+                $game.CRC
+            }
+
             if ( $useBaseName -eq $useGameName ) {
                 $found = $true
-                $outFile = "$OutputDirectory\$($game.CRC).bin"
+                $outFile = "$OutputDirectory\$($gameCrc).bin"
 
                 $returnObj = Convert-ImageToAnalogueBmp -ScaleMode $ScaleMode $inFile $outFile -SourceFormat $imageType
                 $returnObj.Name = $_.BaseName
@@ -1408,7 +1431,7 @@ Function Convert-SingleImage {
         [Parameter(Mandatory)]
         [string]$OutFile,
         [Parameter(Mandatory)]
-        [ValidateSet('Original', 'BoxArts')]
+        [ValidateSet('Original', 'BoxArts', 'Titles')]
         [string]$ScaleMode,
         [byte[]]$ImageHeader
     )
